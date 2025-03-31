@@ -150,6 +150,12 @@ HTTP Request Method คือส่วนที่ใช้กำหนดปร
 สร้างโฟลเดอร์ backend และ frontend
 ![[Pasted image 20250401034424.png]]
 ## **2. Setup Database**
+
+SQL Database นั้นจริงๆ แล้วมีหลายตัวมาก เช่น MySQL, PostgreSQL, SQLite แต่ในที่นี้จะใช้ PostgreSQL เนื่องจากเป็น Database ที่นิยมใช้กันมากในปัจจุบัน และมีความสามารถในการจัดการข้อมูลที่ซับซ้อนได้ดี
+และ สาเหตุที่ต้องเปิดใน Docker เพราะว่า Docker ช่วยให้การติดตั้งและจัดการ Database เป็นไปอย่างง่ายดายและรวดเร็ว โดยไม่ต้องกังวลเกี่ยวกับการตั้งค่าและการจัดการไฟล์ต่างๆ ที่เกี่ยวข้องกับ Database
+
+ตัว Docker จะช่วยให้เราสามารถสร้าง Container ที่มี PostgreSQL ติดตั้งอยู่ภายในได้อย่างรวดเร็ว และสามารถลบหรือรีสตาร์ท Container ได้ง่ายๆ โดยไม่กระทบกับระบบปฏิบัติการหลักของเรา
+
 ### **2.1 สร้างไฟล์ Docker Compose**
 
 สร้างไฟล์ docker-compose.yml ในโฟลเดอร์ใหญ่
@@ -535,7 +541,67 @@ app.listen(PORT, () => {
 
 
 ## **6. เขียนโค้ดเชื่อมต่อกับ Database**
-## **7. สร้าง Router ต่างๆ**
-## **8. สร้าง Controller ต่างๆ**
-## **9. สร้าง User Authentication**
+### **6.1 ติดตั้ง pg**
+พิมพ์คำสั่ง
+pg คือ package ที่ใช้ในการเชื่อมต่อกับ PostgreSQL Database
+
+```bash
+npm install pg
+```
+### **6.2 สร้าง Folder ชื่อ config และข้างในสร้างไฟล์ database.js**
+
+![[Pasted image 20250401061446.png]]
+
+database.js
+```javascript
+import pg from "pg";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+
+export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+export const query = async (text, params) => {
+
+  const start = Date.now();
+
+  const res = await pool.query(text, params);
+
+  const duration = Date.now() - start;
+
+  console.log("executed query", { text, duration, rows: res.rowCount });
+
+  return res;
+
+};
+```
+
+ใน .env ให้เพิ่ม DATABASE_URL ด้วยค่านี้
+```env
+PORT=3000
+DATABASE_URL=postgres://admin:password@localhost:5432/taskmanagement
+```
+
+![[20250331-2317-13.2749414.mp4]]
+
+### **6.3 ทดสอบว่าต่อ Database สำเร็จหรือไม่**
+สร้างไฟล์ test.js ในโฟลเดอร์ backend
+![[Pasted image 20250401061723.png]]
+test.js
+```javascript
+import { pool } from "./config/database.js";
+import dotenv from "dotenv";
+dotenv.config();
+const testConnection = async () => {
+    try {
+        const client = await pool.connect();
+        console.log("Connected to the database");
+        client.release();
+      } catch (err) {
+       console.error("Error connecting to the database", err);
+      }
+};
+testConnection();
+```
 
