@@ -1252,6 +1252,182 @@ JWT (JSON Web Token) คือ มาตรฐานการเข้ารห�
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
+ดังนั้นต่อกันเลยยย
+เราจะใช้ Package ที่ชื่อว่า jsonwebtoken ในการสร้าง Token เพื่อใช้ในการยืนยันตัวตนของผู้ใช้
+โดยการติดตั้ง Package นี้ก่อน
+```bash
+npm install jsonwebtoken
+```
+
+แล้วใน authController.js ให้ทำการ import jsonwebtoken เข้ามา
+```javascript
+// authController.js
+import bcrypt from "bcrypt";
+import { query } from "../config/database.js";
+import jwt from "jsonwebtoken";
+
+export async function registerUser(req, res) {
+  try {
+    const { username, email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        error: "Please provide username, email, and password.",
+      });
+    }
+
+    // ใส่ role ไว้ก่อน
+    const role = "user";
+
+    // เช็คว่ามี email นี้อยู่ในระบบหรือไม่ ถ้ามีให้ return error
+    const existing = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (existing.rowCount > 0) {
+      return res.status(400).json({
+        error: "User with this email already exists.",
+      });
+    }
+
+    // สร้าง user_id ใหม่
+    const idRes = await query("SELECT generate_user_id() as id");
+    const user_id = idRes.rows[0].id;
+
+    // ใช้ bcrypt ในการเข้ารหัส Password พร้อมกับ Salt
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // สร้าง User ใหม่ใน ตาราง users
+    await query(
+      `INSERT INTO users (user_id, username, email, password, role)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user_id, username, email, hashedPassword, role]
+    );
+
+    // ส่ง Response กลับไปว่า User ลงทะเบียนสำเร็จ
+    res.status(201).json({
+      success: true,
+      message: "Registration successful",
+      userId: user_id,
+    });
+  } catch (error) {
+    // Handle any unexpected errors
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function loginUser(req, res) {
+  try {
+    const { email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Please provide email and password.",
+      });
+    }
+
+    // หา User ใน Database
+    const userRes = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (userRes.rowCount === 0) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = userRes.rows[0];
+
+    // ตรวจสอบ Password กับ Hashed Password ที่เก็บใน Database
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // สร้าง JWT Token โดยใช้ fucntion generateToken ที่เราสร้างขึ้น
+    const token = generateToken(user);
+
+    console.info(`User ${user.user_id} logged in successfully`);
+
+    // ส่ง Response กลับไปว่า User Login สำเร็จ
+    res.status(200).json({
+      success: true,
+      token,
+      userId: user.user_id,
+      name: user.username || user.email.split("@")[0],
+      email: user.email,
+    });
+  } catch (error) {
+    // ถ้ามี Error ให้ส่ง Response กลับไปว่า Internal server error
+    console.error("Login error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+function generateToken(user) {
+  // สร้าง JWT Token โดยใช้ jsonwebtoken jwt.sign คือ ฟังก์ชันที่ใช้ในการสร้าง Token โดยที่เราจะส่งข้อมูลที่เราต้องการเก็บใน Token ไป
+  return jwt.sign(
+    {
+      userId: user.user_id,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET, // Secret Key ที่ใช้ในการเข้ารหัส Token
+    { expiresIn: "15d" }
+  );
+}
+
+```
+
+^84a15c
+
+ก่อนใช้งาน JWT Token เราต้องสร้าง Secret Key ขึ้นมาก่อน
+ซึ่ง Secret Key นี้จะถูกใช้ในการเข้ารหัส Token และตรวจสอบความถูกต้องของ Token
+โดย Secret Key นี้จะต้องเก็บเป็นความลับ ไม่ควรเปิดเผยให้ใครรู้
+ในที่นี้เราจะใส่ String อะไรก็ได้ลงไปก่อน
+ไปที่ไฟล์ .env แล้วเพิ่มบรรทัดนี้เข้าไป
+
+ในไฟล์ .env
+```bash
+PORT=3000
+DATABASE_URL=postgres://admin:password@localhost:5432/taskmanagement
+JWT_SECRET=your_jwt_secret
+```
+
+แล้วลองทดสอบ Login ใหม่ใน Postman โดยการส่ง POST Request ไปที่
+```
+http://localhost:3000/api/v1/auth/login
+```
+และ Body
+```
+{
+    "email" : "test@gmail.com",
+    "password" : "testpassword"
+}
+```
+
+แล้วกด Send
+
+![[20250402-1930-54.5167538.mp4]]
+
+ถ้าทำได้สำเร็จจะได้รับการตอบกลับเป็นแบบด้านล่าง และเราจะได้ Token มาด้วย
+``` json
+{
+    "success": true,
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+    "userId": "00001",
+    "name": "testuser",
+    "email": "test@gmail.com"
+}
+```
+
+ใน Token ที่เราสร้างขึ้นมานั้นจะมีข้อมูลที่ Backend ตอบกลับไปให้ Frontend ฝั่งเก็บไว้ สิ่งที่ฝังไว้จะเป็นตาม Function [[Start Point#^84a15c | generateToken ของเรา]]
+ซึ่งเราสามารถลองนำ Token มาถอดรหัสได้ที่ https://jwt.is/
+
+
+
+จากในรูปจะเห็นว่า Token ที่เราสร้างขึ้นมา เมื่อถอดรหัสนั้นจะมีข้อมูลที่เราฝังไว้
+
 ### **7.3 เดี๋ยวจะพาทำส่วนของ Project ก่อน**
 โอเค! ตอนนี้เราจะทำส่วนของ Project ก่อนนะ
 โดย Project เนี่ยเราควรจะขอได้ว่ามีโปรเจคอะไรบ้างในระบบของเรา ควรจะสร้างโปรเจคใหม่ได้ ควรจะแก้ไขข้อมูลโปรเจคที่มีอยู่ในได้ และควรจะลบโปรเจคที่ไม่ต้องการออกไป
@@ -1410,7 +1586,7 @@ const getAllProjects = async (req, res) => {
     // ส่งข้อความกลับไปยัง Client(Frontend) ว่ามีข้อผิดพลาดเกิดขึ้น
   }
 };
-
+```
 
 
 
