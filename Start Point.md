@@ -856,7 +856,7 @@ export default userRouter;
 
 ![[Pasted image 20250401114259.png]]
 
-### **7.2 เดี๋ยวพาทำของ User**
+### **7.2 เดี๋ยวพาทำเกี่ยวกับ User และ Authentication ก่อน**
 โอเค! ตอนนี้เราจะทำส่วนของ User ก่อนนะ
 
 โดย User ควรจะมีการลงทะเบียน (Register) และเข้าสู่ระบบ (Login)
@@ -1228,13 +1228,13 @@ export const loginUser = async (req, res) => {
 
 ---
 
-#### 🔐 แล้วเราจะสร้าง Token อย่างไร?
+##### 🔐 แล้วเราจะสร้าง Token อย่างไร?
 
 💡 คำตอบคือ เราจะใช้ **JWT (JSON Web Token)**
 
 ---
 
-#### JWT คืออะไร?
+##### JWT คืออะไร?
 
 JWT (JSON Web Token) คือ มาตรฐานการเข้ารหัสข้อมูลให้อยู่ในรูปแบบของ Token ที่สามารถใช้ส่งข้อมูลระหว่างระบบแบบปลอดภัย
 ซึ่งใน JWT จะมีทั้งหมด 3 ส่วนหลัก ๆ คือ:
@@ -1424,173 +1424,1451 @@ http://localhost:3000/api/v1/auth/login
 ใน Token ที่เราสร้างขึ้นมานั้นจะมีข้อมูลที่ Backend ตอบกลับไปให้ Frontend ฝั่งเก็บไว้ สิ่งที่ฝังไว้จะเป็นตาม Function [[Start Point#^84a15c | generateToken ของเรา]]
 ซึ่งเราสามารถลองนำ Token มาถอดรหัสได้ที่ https://jwt.is/
 
+![[20250403-0534-27.1798150.mp4]]
 
+![[Pasted image 20250403123553.png]]
 
 จากในรูปจะเห็นว่า Token ที่เราสร้างขึ้นมา เมื่อถอดรหัสนั้นจะมีข้อมูลที่เราฝังไว้
+และ Token นี้ Frontend จะต้องแนบไปกับทุก Request ที่ต้องการยืนยันตัวตน
+แล้ว Backend จะทอดออกมาดูว่า Token นี้เป็นของใครเพื่อที่จะใช้ใน Operation ที่ต้องการการยืนยันตัวตน
 
-### **7.3 เดี๋ยวจะพาทำส่วนของ Project ก่อน**
-โอเค! ตอนนี้เราจะทำส่วนของ Project ก่อนนะ
-โดย Project เนี่ยเราควรจะขอได้ว่ามีโปรเจคอะไรบ้างในระบบของเรา ควรจะสร้างโปรเจคใหม่ได้ ควรจะแก้ไขข้อมูลโปรเจคที่มีอยู่ในได้ และควรจะลบโปรเจคที่ไม่ต้องการออกไป
-4 ฟังก์ชันการทำงานนี้มักถูกเรียกว่า CRUD Operations
-หรือก็คือ Create, Read, Update, Delete
+โอเค! ตอนนี้เราทำการยืนยันตัวตนของ User ได้แล้ว
+ต่อไปเราจะทำให้ Backend ดึงข้อมูล User ที่ Login เข้ามาในระบบจาก Token ที่ส่งมาผ่าน Middleware กัน!
 
-CRUD Operations เป็นพื้นฐานของการพัฒนาแอปพลิเคชันที่ทำงานกับข้อมูล
-ในเมื่อเรารู้แล้วว่าเราต้องการทำอะไรบ้าง เราก็จะไปออกแบบว่า Router ของเราควรจะมีอะไรบ้าง และ Controller ของเราควรจะทำอะไรบ้าง
+### 7.3 สร้าง Middleware
+Middleware คือ ฟังก์ชันที่ทำงานระหว่าง Request และ Response
+Middleware จะทำงานก่อนที่ Request จะถูกส่งไปยัง Route Handler
+Middleware สามารถใช้ในการตรวจสอบ Token ที่ส่งมาจาก Client (Frontend) ว่าถูกต้องหรือไม่
+และสามารถใช้ในการดึงข้อมูล User จาก Token ที่ส่งมาด้วย
 
-การ Create Project
-ในการสร้างโปรเจคใหม่ เราจะใช้ HTTP Method POST (ตามค่านิยมที่ Method POST นั้นสื่อถึงการสร้างข้อมูลใหม่)
-แล้วเส้นทางล่ะ?
-จากบ้านหลักของเราอยู่ที่ http://localhost:3000
-เราจะสร้างโถงทางเดินใหม่ที่ชื่อว่า /api/v1/projects
+เราจะมาลองดูภาพรวมกันว่าเป็นยังไง
 
-ดังนั้นมาดูกันว่าต้องทำอะไรบ้าง
-#### **7.3.1 สร้างไฟล์ projectRouter.js ใน Folder routes**
-![[Pasted image 20250401120514.png]]
+![[Pasted image 20250403141514.png]]
+เริ่มจากมี HTTP reqeust เข้ามาที่ Backend ของเราโดยต้องการไปยัง API ที่ตัว Router ก็จะมองดูว่า เส้นทางที่ต้องการไปนั้นได้มีการกำหนด Middleware ไว้หรือไม่
+ถ้ามีก็จะส่งต่อไปให้ Middleware ทำงานก่อน
+
+![[Pasted image 20250403142108.png]]
+เมื่อไปถึง Middleware, Middleware จะทำการตรวจสอบ Token ที่แนบมากับ Request ว่าถูกต้องหรือไม่พร้อมกับถอดรหัสดึงข้อมูล User ออกมาแล้วแนบข้อมูล User กลับเข้าไปใน Request
+
+![[Pasted image 20250403142504.png]]
+แล้ว Middleware จะส่งต่อ Request ที่มีข้อมูล User ไปยัง Route Handler
+
+
+![[Pasted image 20250403142926.png]]
+แล้วที่ route handler ก็จะมองหาข้อมูลที่แนบมาด้วยใน Request Header ที่ผ่านจาก Middleware มาแล้ว
+
+เท่านี้เราก็จะสามารถรู้ได้แล้วว่า User ที่ Login เข้ามานั้นคือใคร
+
+
+#### 7.3.1 สร้างไฟล์ Middleware
+ดังนั้นเริ่มเลยโดยเราจะสร้าง Folder ใหม่ชื่อว่า middleware และสร้างไฟล์ authMiddleware.js ขึ้นมา
+
+![[Pasted image 20250403144939.png]]
+
 ```javascript
-// projectRouter.js
-import express from "express";
-import { createProject, getAllProjects, getProjectById, updateProject, deleteProject } from "../controllers/projectController.js";
-const projectRouter = express.Router();
-projectRouter.post("/", createProject);
-projectRouter.get("/", getAllProjects);
-projectRouter.get("/:id", getProjectById);
-projectRouter.put("/:id", updateProject);
-projectRouter.delete("/:id", deleteProject);
+import jwt from "jsonwebtoken";
 
-export default projectRouter;
-```
-#### **7.3.2 สร้างไฟล์ projectController.js ใน Folder controllers**
-![[Pasted image 20250401120546.png]]
-```javascript
-// projectController.js
-import { query } from "../config/database.js";
-
-const createProject = async (req, res) => {
-}
-
-const getAllProjects = async (req, res) => {
-}
-
-const getProjectById = async (req, res) => {
-}
-
-const updateProject = async (req, res) => {
-}
-
-const deleteProject = async (req, res) => {
-}
-export { createProject, getAllProjects, getProjectById, updateProject, deleteProject };
-```
-#### **7.3.3 แก้ไขไฟล์ index.js**
-``` javascript
-import express from "express";
-
-import dotenv from "dotenv";
-
-import { testConnection } from "./test.js";
-
-import projectRouter from "./routes/projectRouter.js";
-
-
-
-dotenv.config();
-
-const app = express();
-
-const PORT = process.env.PORT || 3000;
-
-
-
-app.use("/api/v1/projects", projectRouter);
-
-
-
-app.listen(PORT, () => {
-
-  console.log(`Server is running on http://localhost:${PORT}`);
-
-  testConnection();
-
-});
-```
-
-### 7.3.4 เขียน Logic ใน Controller
-ขั้นตอนนี้เราจะเขียน Logic ใน Controller กันซึ่งจะใช้ ทั้ง javascript และ SQL (DML) ในการเข้าไปจัดการกับ Database
-
-เดี๋ยวเราจะทำ Create Project กันก่อน
-```javascript
-// projectController.js
-// query คือฟังก์ชันที่เรา import มาจาก database.js สิ่งที่มันทำคือมันจะรับ SQL Query และส่งไปยัง Database ของเรา และตอบกลับมาเป็นผลลัพธ์
-import { query } from "../config/database.js";
-
-// createProject คือฟังก์ชันที่เราจะใช้ในการสร้างโปรเจคใหม่
-// req คือ Request Object ที่เก็บข้อมูลที่ส่งมาจาก Client(Frontend)
-// ซึ่งก็ใน Object ของ Request ก็ Attribute ต่างๆให้เราใช้แต่ที่เราใช้กันหลักๆ ก็จะมี
-// req.body คือข้อมูลที่ส่งมาจาก Client(Frontend) เช่น ชื่อโปรเจค, รายละเอียดโปรเจค
-// req.params คือข้อมูลที่ส่งมาจาก URL เช่น id ของโปรเจคที่เราต้องการจะอัพเดท
-// req.query คือข้อมูลที่ส่งมาจาก URL เช่น ?id=1&name=project1
-// res คือ Response Object ที่เราจะใช้ในการส่งข้อมูลกลับไปยัง Client(Frontend)
-// ซึ่งก็ใน Object ของ Response ก็ Attribute ต่างๆให้เราใช้แต่ที่เราใช้กันหลักๆ ก็จะมี
-// res.send คือการส่งข้อมูลกลับไปยัง Client(Frontend)
-// res.status คือการตั้งค่า Status Code ของ Response เช่น 200, 201, 400, 404, 500
-// res.json คือการส่งข้อมูลกลับไปยัง Client(Frontend) ในรูปแบบ JSON
-
-// ซึ่งการสร้างโปรเจคใหม่เราจะใช้ นั้นเราจะต้องใช้ข้อมูลของโปรเจคใหม่ที่เราต้องการจะสร้าง
-// ดังนั้นเราจะต้องดึงข้อมูลจาก req.body เพื่อใช้ในการสร้างโปรเจคใหม่
-// เราจะออกแบบให้ Backend ของเรารับข้อมูลในรูปแบบ JSON
-// และซิ่งที่ส่งมาต้องตรงกับตารางที่ออกแบบไว้ใน Database
-const createProject = async (req, res) => {
+export function authMiddleware(req, res, next) {
   try {
-    const { projectName, projectDescription, category ,ownerId } = req.body; // ดึงข้อมูลจาก req.body
+    // เช็คว่า request มี header Authorization หรือไม่
+    const authHeader = req.headers.authorization;
+    let token = null;
 
-    // และในกรณีที่นี้เราต้อง generate projectId ขึ้นมาใหม่จาก ฟังก์ชันที่เขียนไว้ใน database.js
-    const idRes = await query("SELECT generate_project_id() as id");
-    const projectId = idRes[0].id; // ดึง projectId ที่ generate ขึ้นมาใหม่
+    // ดึง token จาก header Authorization ถ้ามี
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    }
+    // ถ้าไม่มี token ใน header Authorization ให้ลองดึงจาก cookie
+    else if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
 
-    const result = await query(
-      `INSERT INTO project (project_id, project_name, project_description, owner_id, category)
+    // ถ้าไม่มี token ให้ส่ง response กลับไปว่าไม่อนุญาตให้เข้าถึง
+    if (!token) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // ถ้ามี token ให้ทำการ verify token ด้วย secret key
+    try {
+      // อันนี้คือการถอดรหัส token ออกมาโดยใช้ secret key ไว้ตรวจสอบว่า Token ที่ส่งมานั้นถูกต้องหรือไม่
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded; // เก็บข้อมูลผู้ใช้ใน request object ก่อนส่งต่อไปยัง route handler function
+      next(); // ถ้า token ถูกต้อง ให้เรียกใช้ next() เพื่อไปยัง route handler ถัดไป
+    } catch (jwtError) {
+      console.error("JWT verification failed", jwtError);
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+  } catch (err) {
+    console.error("Auth middleware error", err);
+    return res.status(500).json({ error: "Authentication error" });
+  }
+}
+```
+#### 7.3.2 ลองสร้าง Endpoint ใหม่เพื่อลองดึงข้อมูล User ดู
+ในไฟล์ authRouter.js ให้ลองสร้าง Endpoint ใหม่ขึ้นมา
+```javascript
+// authRouter.js
+import express from "express";
+import { registerUser, loginUser,  getMe } from "../controllers/authController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.post("/register", registerUser); // POST /api/v1/auth/register
+router.post("/login", loginUser); // POST /api/v1/auth/login
+
+// เป็นการบอกว่าให้ใช้ middleware ก่อนจะส่งไปยัง controller getMe น้ะะ
+router.get("/me", authMiddleware, getMe); // GET /api/v1/auth/me
+
+export default router;
+
+```
+แล้วใน authController.js ให้ลองสร้างฟังก์ชัน getMe ขึ้นมา
+```javascript
+// authController.js
+import bcrypt from "bcrypt";
+import { query } from "../config/database.js";
+import jwt from "jsonwebtoken";
+
+export async function registerUser(req, res) {
+  try {
+    const { username, email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        error: "Please provide username, email, and password.",
+      });
+    }
+
+    // ใส่ role ไว้ก่อน
+    const role = "user";
+
+    // เช็คว่ามี email นี้อยู่ในระบบหรือไม่ ถ้ามีให้ return error
+    const existing = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (existing.rowCount > 0) {
+      return res.status(400).json({
+        error: "User with this email already exists.",
+      });
+    }
+
+    // สร้าง user_id ใหม่
+    const idRes = await query("SELECT generate_user_id() as id");
+    const user_id = idRes.rows[0].id;
+
+    // ใช้ bcrypt ในการเข้ารหัส Password พร้อมกับ Salt
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // สร้าง User ใหม่ใน ตาราง users
+    await query(
+      `INSERT INTO users (user_id, username, email, password, role)
        VALUES ($1, $2, $3, $4, $5)`,
-      [projectId, projectName, projectDescription, ownerId, category]
+      [user_id, username, email, hashedPassword, role]
     );
+
+    // ส่ง Response กลับไปว่า User ลงทะเบียนสำเร็จ
     res.status(201).json({
-      message: "Project created successfully",
-      projectId: projectId,
+      success: true,
+      message: "Registration successful",
+      userId: user_id,
     });
   } catch (error) {
-    // ถ้ามีข้อผิดพลาดเกิดขึ้น
-    console.error(error); // แสดงข้อผิดพลาดใน Console
-    res.status(500).json({ message: "Internal server error" });
-    // ส่งข้อความกลับไปยัง Client(Frontend) ว่ามีข้อผิดพลาดเกิดขึ้น
+    // Handle any unexpected errors
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
   }
-};
+}
+export async function loginUser(req, res) {
+  try {
+    const { email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Please provide email and password.",
+      });
+    }
+
+    // หา User ใน Database
+    const userRes = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (userRes.rowCount === 0) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = userRes.rows[0];
+
+    // ตรวจสอบ Password กับ Hashed Password ที่เก็บใน Database
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // สร้าง JWT Token โดยใช้ fucntion generateToken ที่เราสร้างขึ้น
+    const token = generateToken(user);
+
+    console.info(`User ${user.user_id} logged in successfully`);
+
+    // ส่ง Response กลับไปว่า User Login สำเร็จ
+    res.status(200).json({
+      success: true,
+      token,
+      userId: user.user_id,
+      name: user.username || user.email.split("@")[0],
+      email: user.email,
+    });
+  } catch (error) {
+    // ถ้ามี Error ให้ส่ง Response กลับไปว่า Internal server error
+    console.error("Login error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getMe(req, res) {
+  try {
+    const { userId } = req.user;
+    const userRes = await query(
+      "SELECT user_id, username, email, role FROM users WHERE user_id = $1",
+      [userId]
+    );
+    if (userRes.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userRes.rows[0];
+
+    res.status(200).json({
+      userId: user.user_id,
+      name: user.username,
+      email: user.email,
+      role: user.role,
+    });
+  } catch (error) {
+    log.error("Get current user error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+function generateToken(user) {
+  // สร้าง JWT Token โดยใช้ jsonwebtoken jwt.sign คือ ฟังก์ชันที่ใช้ในการสร้าง Token โดยที่เราจะส่งข้อมูลที่เราต้องการเก็บใน Token ไป
+  return jwt.sign(
+    {
+      userId: user.user_id,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET, // Secret Key ที่ใช้ในการเข้ารหัส Token
+    { expiresIn: "15d" }
+  );
+}
 ```
 
-โอเค! ตอนนี้เราก็สามารถสร้างโปรเจคใหม่ได้แล้ว ต่อไปคือการขอข้อมูลโปรเจคทั้งหมด
-```javascript
-// projectController.js
-const getAllProjects = async (req, res) => {
-  try {
-    const { userId } = req.query; // ดึง userId จาก req.query
-    // ตัวอย่าง URL ที่มี req.query http://localhost:3000/projects?userId=1
+#### 7.3.3 ทดสอบโดย Postman
+ลองทดสอบโดยการส่ง GET Request ไปที่
+```
+http://localhost:3000/api/v1/auth/me
+```
 
+แล้วแนบ Token ที่ได้จากการ Login ไปใน Header
+```
+Authorization: Bearer <your_token_here>
+```
+
+![[20250403-1010-16.8296460.mp4]]
+เมื่อทำสำเร็จ Backend จะตอบกลับ
+``` json
+{
+  "userId":"00001",
+  "name":"testuser",
+  "email":"test@gmail.com",
+  "role":"user"
+}
+```
+
+เท่านี้เราก็สำเร็จในการสร้างระบบ Authentication พร้อม Middleware เรียบร้อยแล้วพร้อมที่จะไปทำในส่วนที่เหลือของโปรเจคกันต่อ
+
+### **7.4 Implement CRUD operations สำหรับตารางอื่นๆ**
+หลังจาก Backend ของเราสามารถยืนยันตัวตนของ User ได้แล้ว
+ที่เหลือก็แค่ระบบอื่นๆ เช่น การจัดการ Project, Task, Assignment, Attachment และอื่นๆ
+
+โดยที่ข้อมูลเหล่านี้จะมี Opearation หลักๆคือ
+- การสร้าง (Create)
+- การอ่าน (Read)
+- การแก้ไข (Update)
+- การลบ (Delete)
+เรียกรวมทั้งหมดนี้เรามักจะเรียกว่า CRUD Operation เหล่านี้เป็น Operation พื้นฐานที่ทุกตารางควรจะมี เว้นแต่มีบางตารางที่ต้องมีการจัดการเป็นพิเศษก็อาจจะไม่มีก็ได้
+
+แต่สำหรับเรา แต่ละตารางจะมี CRUD Operation ดังนั้นเราจะมาทำ CRUD Operation สำหรับตาราง Project เป็นตัวอย่างกัน
+
+#### 7.4.1 สร้างไฟล์ projectRouter.js และ projectController.js
+
+ใน Folder routes ให้สร้างไฟล์ projectRouter.js ขึ้นมา
+![[Pasted image 20250403172307.png]]
+
+```javascript
+// routes/projectRouter.js
+import express from "express";
+import {
+  createProject,
+  getProjectFromID,
+  getProject,
+  updateProject,
+  deleteProject,
+} from "../controllers/projectController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.post("/", authMiddleware, createProject);
+router.get("/", authMiddleware, getProjectFromID);
+
+// /:id เรียกว่า reqest parameter ตัวอย่างเช่น http://localhost:3000/projects/1
+// เป็นตัวแปรที่ใช้ในการระบุ project_id ที่เราต้องการดึงข้อมูลที่สามารถใส่มาใน URL ได้เลยโดยไม่ต้องส่งใน body
+// ซึ่ง Method GET ปกติจะไม่ส่งข้อมูลใน body แต่จะส่งใน URL แทน
+// ดังนั้นเราจึงใช้ request parameter ในการดึงข้อมูล project_id ที่เราต้องการ
+router.get("/:id", authMiddleware, getProject);
+router.put("/:id", authMiddleware, updateProject);
+router.delete("/:id", authMiddleware, deleteProject);
+
+export default router;
+
+```
+
+ใน Folder controllers ให้สร้างไฟล์ projectController.js ขึ้นมา
+![[Pasted image 20250403172611.png]]
+
+```javascript
+// controllers/projectController.js
+import { query } from "../config/database.js";
+
+export async function createProject(req, res) {}
+
+export async function getAllProjects(req, res) {}
+
+export async function getProjectFromID(req, res) {}
+
+export async function updateProject(req, res) {}
+
+export async function deleteProject(req, res) {}
+```
+
+เดี๋ยวจะพาทำไปทีละฟังก์ชันนะ
+เริ่มจากการสร้าง Project ก่อน
+
+#### 7.4.2 Create Project
+
+```javascript
+export async function createProject(req, res) {
+  try {
+    // เริ่มจากการดึงข้อมูลที่จำเป็นจาก request body
+    const { projectName, projectDescription, category } = req.body;
+
+    // ตรวจสอบว่าข้อมูลที่จำเป็นถูกส่งมาหรือไม่
+    if (!projectName || !category) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    // สร้าง project_id ใหม่
+    // โดยใช้ฟังก์ชัน generate_project_id() ที่เราสร้างไว้ใน init.sql
+    const idRes = await query("SELECT generate_project_id() as id");
+    const projectId = idRes.rows[0].id; // ดึง project_id ที่สร้างขึ้นมา
+
+    // สร้าง Project ใหม่ใน ตาราง project
+    await query(
+      `INSERT INTO project (project_id, project_name, project_description, owner_id, category)
+         VALUES ($1, $2, $3, $4, $5)`,
+      [projectId, projectName, projectDescription, req.user.userId, category] // ณ ต่ำแหน่ง $n จะถูกแทนที่ด้วยค่าที่เราส่งไปตามลำดับ
+    );
+
+    res.status(201).json({ message: "Project created", projectId });
+  } catch (error) {
+    console.error("Create project error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.3 Get All Projects
+```javascript
+export async function getAllProjects(req, res) {
+  try {
+    // ดึงข้อมูลโปรเจคทั้งหมดที่ผู้ใช้เป็นเจ้าของหรือเป็นสมาชิก
     const result = await query(
       `SELECT p.* FROM project p
        LEFT JOIN project_member pm ON p.project_id = pm.project_id
        WHERE p.owner_id = $1 OR pm.user_id = $1`,
-      [userId]
+      [req.user.userId]
     );
-    res.status(200).json(result.rows); // ส่งข้อมูลกลับไปยัง Client(Frontend) ในรูปแบบ JSON
+    res.status(200).json(result.rows);
   } catch (error) {
-    console.error(error); // แสดงข้อผิดพลาดใน Console
-    res.status(500).json({ message: "Internal server error" });
-    // ส่งข้อความกลับไปยัง Client(Frontend) ว่ามีข้อผิดพลาดเกิดขึ้น
+    console.error("getAllProjects error: " + error);
+    res.status(500).json({ error: "Internal server error" });
   }
-};
+}
 ```
 
+##### 7.4.4 Get Project From ID
+```javascript
+export async function getProjectFromID(req, res) {
+  try {
+    // ดึงข้อมูลโปรเจคจาก project_id ที่ส่งมาใน request parameters
+    // ตัวอย่าง URL: http://localhost:3000/projects/1
+    const { id } = req.params;
 
+    // หาข้อมูลโปรเจคที่มี project_id ตรงกับที่ส่งมาใน request parameters
+    const result = await query(
+      `SELECT p.* FROM project p
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE p.project_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [id, req.user.userId]
+    );
 
-โอเค! ตอนนี้เราสร้างได้ ดูได้ ดังนั้นเราจะลองทดสอบดู ด้วยการลองใช้  Backend ของเรากันน
+    // ถ้าไม่พบข้อมูลโปรเจคที่ตรงกับ project_id ที่ส่งมาใน request parameters
+    // จะส่ง status 404 Not Found กลับไป
+    if (result.rowCount === 0)
+      return res.status(404).json({ error: "Not found" });
+
+    // ถ้าพบข้อมูลโปรเจคที่ตรงกับ project_id ที่ส่งมาใน request parameters
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error("getProject error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.5 Update Project
+```javascript
+export async function updateProject(req, res) {
+  try {
+    const { id } = req.params; // ดึง project_id จาก request parameters
+    const { projectName, projectDescription, category } = req.body; // ดึงข้อมูลที่ส่งมาใน request body
+
+    // ตรวจสอบว่าข้อมูลที่จำเป็นถูกส่งมาหรือไม่
+    if (!projectName || !category) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    // ทำการตรวจสอบว่าคนที่ส่งคำขออัปเดตโปรเจคนี้เป็นเจ้าของโปรเจคหรือไม่
+    const ownerCheck = await query(
+      "SELECT owner_id FROM project WHERE project_id = $1",
+      [id]
+    );
+    if (
+      !ownerCheck.rows[0] ||
+      ownerCheck.rows[0].owner_id !== req.user.userId
+    ) {
+      // ถ้าคนที่ส่งคำขอไม่ใช่เจ้าของโปรเจค หรือไม่พบโปรเจคในฐานข้อมูล จะตอบกลับด้วย status 403 และไม่ให้ทำการอัปเดต
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // ถ้าผ่านการตรวจสอบแล้ว ทำการอัปเดตโปรเจค
+    await query(
+      `UPDATE project SET project_name=$1, project_description=$2, category=$3
+       WHERE project_id=$4`,
+      [projectName, projectDescription, category, id]
+    );
+    // ถ้าอัปเดตสำเร็จ จะตอบกลับด้วย status 200 และข้อความว่า "Project updated"
+    res.status(200).json({ message: "Project updated" });
+  } catch (error) {
+    // ถ้ามีข้อผิดพลาดเกิดขึ้น จะตอบกลับด้วย status 500 และข้อความว่า "Internal server error"
+    console.error("updateProject error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.6 Delete Project
+```javascript
+export async function deleteProject(req, res) {
+  try {
+    const { id } = req.params; // ดึง project_id จาก request parameters
+
+    // ทำการตรวจสอบว่าคนที่ส่งคำขอจะลบโปรเจคนี้เป็นเจ้าของโปรเจคหรือไม่
+    const ownerCheck = await query(
+      "SELECT owner_id FROM project WHERE project_id = $1",
+      [id]
+    );
+    if (
+      !ownerCheck.rows[0] ||
+      ownerCheck.rows[0].owner_id !== req.user.userId
+    ) {
+      // ถ้าคนที่ส่งคำขอไม่ใช่เจ้าของโปรเจค หรือไม่พบโปรเจคในฐานข้อมูล จะตอบกลับด้วย status 403 และไม่ให้ทำการลบ
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // ถ้าผ่านการตรวจสอบแล้ว ทำการลบโปรเจค
+    await query("DELETE FROM project WHERE project_id = $1", [id]);
+
+    // ถ้าลบสำเร็จ จะตอบกลับด้วย status 200 และข้อความว่า "Project deleted"
+    res.status(200).json({ message: "Project deleted" });
+  } catch (error) {
+    // ถ้ามีข้อผิดพลาดเกิดขึ้น จะตอบกลับด้วย status 500 และข้อความว่า "Internal server error"
+    console.error("deleteProject error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.7 สร้าง Route ใหม่ใน index.js
+ในไฟล์ index.js ให้ import projectRouter เข้ามา
+```javascript
+import express from "express";
+import dotenv from "dotenv";
+import { testConnection } from "./test.js";
+import authRouter from "./routes/authRouter.js";
+import projectRouter from "./routes/projectRouter.js";
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/projects", projectRouter);
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  testConnection();
+});
+```
+
+#### 7.4.8 ทดสอบ CRUD Project
+ลองทดสอบ CRUD Project โดยใช้ Postman
+![[postman_test.mp4]]
+
+1. **Create Project**
+    - Method: POST
+    - URL: http://localhost:3000/api/v1/projects
+    - Body:
+  ```json
+  {
+    "projectName": "Test Project",
+    "projectDescription": "This is a test project",
+    "category": "Development"
+  }
+  ```
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  2. **Get All Projects**
+    - Method: GET
+    - URL: http://localhost:3000/api/v1/projects
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  3. **Get Project From ID**
+    - Method: GET
+    - URL: http://localhost:3000/api/v1/projects/<project_id>
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  4. **Update Project**
+    - Method: PUT
+    - URL: http://localhost:3000/api/v1/projects/<project_id>
+    - Body:
+  ```json
+  {
+    "projectName": "Updated Project",
+    "projectDescription": "This is an updated project",
+    "category": "Development"
+  }
+  ```
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  5. **Delete Project**
+    - Method: DELETE
+    - URL: http://localhost:3000/api/v1/projects/<project_id>
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+#### 7.4.9 สำหรับตารางอื่นๆ
+สำหรับตารางอื่นๆก็จะมี CRUD Operation ที่คล้ายกัน
+- taskRouter.js
+``` javascript
+// routes/taskRouter.js
+import express from "express";
+import {
+  createTask,
+  getAllTasks,
+  getTask,
+  updateTask,
+  deleteTask,
+  assignUser,
+  unassignUser,
+  getTaskAssignees,
+  getUserTasks,
+} from "../controllers/taskController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.use(authMiddleware);
+
+router.get("/", getAllTasks);
+router.get("/me", getUserTasks);
+router.get("/:id", getTask);
+router.post("/", createTask);
+router.put("/:id", updateTask);
+router.delete("/:id", deleteTask);
+
+// Task assignee routes
+router.get("/:taskId/assignees", getTaskAssignees);
+router.post("/:taskId/assignees", assignUser);
+router.delete("/:taskId/assignees/:userId", unassignUser);
+
+export default router;
+
+```
+
+- taskController.js
+```javascript
+// controllers/taskController.js
+import { query } from "../config/database.js";
+
+export async function createTask(req, res) {
+  console.info(
+    "createTask: Request received, body=" + JSON.stringify(req.body)
+  );
+  try {
+    const {
+      projectId,
+      taskName,
+      taskDescription,
+      startDate,
+      dueDate,
+      status,
+      priority,
+      assignees,
+    } = req.body;
+    if (!projectId || !taskName) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+    const sanitizedProjectId = projectId.trim();
+    const sanitizedTaskName = taskName.trim();
+    const sanitizedTaskDescription = taskDescription
+      ? taskDescription.trim()
+      : "";
+    const sanitizedStatus = status ? status.trim() : "pending";
+    const membershipCheck = await query(
+      `SELECT p.project_id
+       FROM project p
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE p.project_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [sanitizedProjectId, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0)
+      return res.status(403).json({ error: "Not authorized" });
+
+    const newId = await query("SELECT generate_task_id() as id");
+    const taskId = newId.rows[0].id;
+    await query(
+      `INSERT INTO task (task_id, project_id, task_name, task_description, start_date, due_date, status, priority)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        taskId,
+        sanitizedProjectId,
+        sanitizedTaskName,
+        sanitizedTaskDescription,
+        startDate,
+        dueDate,
+        sanitizedStatus,
+        priority,
+      ]
+    );
+
+    // Add assignees if provided
+    if (assignees && Array.isArray(assignees) && assignees.length > 0) {
+      // Validate that all assignees are members of the project
+      for (const assigneeId of assignees) {
+        const isMember = await query(
+          `SELECT user_id FROM project_member
+           WHERE project_id = $1 AND user_id = $2
+           UNION
+           SELECT owner_id FROM project
+           WHERE project_id = $1 AND owner_id = $2`,
+          [sanitizedProjectId, assigneeId]
+        );
+
+        if (isMember.rowCount > 0) {
+          await query(
+            "INSERT INTO task_assignee (task_id, user_id) VALUES ($1, $2)",
+            [taskId, assigneeId]
+          );
+          console.debug(
+            `createTask: User ${assigneeId} assigned to task ${taskId}`
+          );
+        } else {
+          console.warn(
+            `createTask: Attempted to assign non-member ${assigneeId} to task ${taskId}`
+          );
+        }
+      }
+    }
+
+    console.info(
+      `createTask: Task ${taskId} created in project ${sanitizedProjectId}`
+    );
+    res.status(201).json({ message: "Task created", taskId });
+  } catch (error) {
+    console.error("createTask error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getAllTasks(req, res) {
+  console.info(
+    "getAllTasks: Request received, query=" + JSON.stringify(req.query)
+  );
+  try {
+    const { projectId } = req.query;
+    const membershipCheck = await query(
+      `SELECT p.project_id
+       FROM project p
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE p.project_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [projectId, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0)
+      return res.status(403).json({ error: "Not authorized" });
+
+    // Get tasks with their assignees
+    const result = await query(
+      `SELECT t.*,
+        (SELECT json_agg(json_build_object('user_id', ta.user_id))
+         FROM task_assignee ta
+         WHERE ta.task_id = t.task_id) as assignees
+       FROM task t WHERE t.project_id = $1`,
+      [projectId]
+    );
+    console.info(
+      `getAllTasks: Retrieved ${result.rowCount} tasks for project ${projectId}`
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error("getAllTasks error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getTask(req, res) {
+  console.info(
+    "getTask: Request received, params=" + JSON.stringify(req.params)
+  );
+  try {
+    const { id } = req.params;
+
+    // Get task with assignee details
+    const result = await query(
+      `SELECT t.*,
+        (SELECT json_agg(json_build_object('user_id', ta.user_id))
+         FROM task_assignee ta
+         WHERE ta.task_id = t.task_id) as assignees
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [id, req.user.userId]
+    );
+    if (result.rowCount === 0)
+      return res.status(404).json({ error: "Not found or not authorized" });
+    console.info(`getTask: Retrieved task ${id}`);
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error("getTask error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function updateTask(req, res) {
+  console.info(
+    "updateTask: Request received, params=" +
+      JSON.stringify(req.params) +
+      ", body=" +
+      JSON.stringify(req.body)
+  );
+  try {
+    const { id } = req.params;
+    const {
+      taskName,
+      taskDescription,
+      startDate,
+      dueDate,
+      status,
+      priority,
+      assignees,
+    } = req.body;
+    if (!taskName) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+    const sanitizedTaskName = taskName.trim();
+    const sanitizedTaskDescription = taskDescription
+      ? taskDescription.trim()
+      : "";
+    const sanitizedStatus = status ? status.trim() : "pending";
+
+    // Get task and project info to verify membership and project ID
+    const membershipCheck = await query(
+      `SELECT t.*, p.project_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [id, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0)
+      return res.status(403).json({ error: "Not authorized" });
+
+    const projectId = membershipCheck.rows[0].project_id;
+
+    // Update task details
+    await query(
+      `UPDATE task SET task_name=$1, task_description=$2, start_date=$3, due_date=$4, status=$5, priority=$6
+       WHERE task_id=$7`,
+      [
+        sanitizedTaskName,
+        sanitizedTaskDescription,
+        startDate,
+        dueDate,
+        sanitizedStatus,
+        priority,
+        id,
+      ]
+    );
+
+    // Update assignees if provided
+    if (assignees && Array.isArray(assignees)) {
+      // Clear existing assignments
+      await query("DELETE FROM task_assignee WHERE task_id = $1", [id]);
+
+      // Add new assignments
+      if (assignees.length > 0) {
+        for (const assigneeId of assignees) {
+          const isMember = await query(
+            `SELECT user_id FROM project_member
+             WHERE project_id = $1 AND user_id = $2
+             UNION
+             SELECT owner_id FROM project
+             WHERE project_id = $1 AND owner_id = $2`,
+            [projectId, assigneeId]
+          );
+
+          if (isMember.rowCount > 0) {
+            await query(
+              "INSERT INTO task_assignee (task_id, user_id) VALUES ($1, $2)",
+              [id, assigneeId]
+            );
+            console.debug(
+              `updateTask: User ${assigneeId} assigned to task ${id}`
+            );
+          } else {
+            console.warn(
+              `updateTask: Attempted to assign non-member ${assigneeId} to task ${id}`
+            );
+          }
+        }
+      }
+    }
+
+    console.info(`updateTask: Task ${id} updated`);
+    res.status(200).json({ message: "Task updated" });
+  } catch (error) {
+    console.error("updateTask error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function deleteTask(req, res) {
+  console.info(
+    "deleteTask: Request received, params=" + JSON.stringify(req.params)
+  );
+  try {
+    const { id } = req.params;
+    const membershipCheck = await query(
+      `SELECT t.*
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [id, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0)
+      return res.status(403).json({ error: "Not authorized" });
+
+    // Note: Deletion from task_assignee table will be handled by CASCADE constraint
+    await query("DELETE FROM task WHERE task_id = $1", [id]);
+    console.info(`deleteTask: Task ${id} deleted`);
+    res.status(200).json({ message: "Task deleted" });
+  } catch (error) {
+    console.error("deleteTask error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// New functions for managing task assignees
+export async function assignUser(req, res) {
+  console.info(
+    "assignUser: Request received, params=" +
+      JSON.stringify(req.params) +
+      ", body=" +
+      JSON.stringify(req.body)
+  );
+  try {
+    const { taskId } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: "Missing required field: userId." });
+    }
+
+    // Check if user has permission to modify the task (is member of the project)
+    const taskCheck = await query(
+      `SELECT t.task_id, p.project_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [taskId, req.user.userId]
+    );
+
+    if (taskCheck.rowCount === 0) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to modify this task" });
+    }
+
+    const projectId = taskCheck.rows[0].project_id;
+
+    // Check if the assignee is a member of the project
+    const memberCheck = await query(
+      `SELECT user_id FROM project_member
+       WHERE project_id = $1 AND user_id = $2
+       UNION
+       SELECT owner_id FROM project
+       WHERE project_id = $1 AND owner_id = $2`,
+      [projectId, userId]
+    );
+
+    if (memberCheck.rowCount === 0) {
+      return res
+        .status(400)
+        .json({ error: "User is not a member of the project" });
+    }
+
+    // Check if the assignment already exists
+    const assignmentCheck = await query(
+      "SELECT * FROM task_assignee WHERE task_id = $1 AND user_id = $2",
+      [taskId, userId]
+    );
+
+    if (assignmentCheck.rowCount > 0) {
+      return res
+        .status(400)
+        .json({ error: "User is already assigned to this task" });
+    }
+
+    // Add assignment
+    await query(
+      "INSERT INTO task_assignee (task_id, user_id) VALUES ($1, $2)",
+      [taskId, userId]
+    );
+
+    console.info(`assignUser: User ${userId} assigned to task ${taskId}`);
+    res.status(201).json({ message: "User assigned to task" });
+  } catch (error) {
+    console.error("assignUser error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function unassignUser(req, res) {
+  console.info(
+    "unassignUser: Request received, params=" + JSON.stringify(req.params)
+  );
+  try {
+    const { taskId, userId } = req.params;
+
+    // Check if user has permission to modify the task
+    const taskCheck = await query(
+      `SELECT t.task_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [taskId, req.user.userId]
+    );
+
+    if (taskCheck.rowCount === 0) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to modify this task" });
+    }
+
+    // Remove assignment
+    await query(
+      "DELETE FROM task_assignee WHERE task_id = $1 AND user_id = $2",
+      [taskId, userId]
+    );
+
+    console.info(`unassignUser: User ${userId} unassigned from task ${taskId}`);
+    res.status(200).json({ message: "User unassigned from task" });
+  } catch (error) {
+    console.error("unassignUser error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getTaskAssignees(req, res) {
+  console.info(
+    "getTaskAssignees: Request received, params=" + JSON.stringify(req.params)
+  );
+  try {
+    const { taskId } = req.params;
+
+    // Check if user has permission to view the task
+    const taskCheck = await query(
+      `SELECT t.task_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [taskId, req.user.userId]
+    );
+
+    if (taskCheck.rowCount === 0) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to view this task" });
+    }
+
+    // Get assignees with user details
+    const assignees = await query(
+      `SELECT ta.user_id, u.username, u.email
+       FROM task_assignee ta
+       JOIN users u ON ta.user_id = u.user_id
+       WHERE ta.task_id = $1`,
+      [taskId]
+    );
+
+    console.info(
+      `getTaskAssignees: Retrieved ${assignees.rowCount} assignees for task ${taskId}`
+    );
+    res.status(200).json(assignees.rows);
+  } catch (error) {
+    console.error("getTaskAssignees error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getUserTasks(req, res) {
+  console.info("getUserTasks: Request received");
+  try {
+    const userId = req.user.userId;
+
+    // Get tasks with more details and assignee information
+    const tasks = await query(
+      `SELECT t.*, p.project_name,
+        (SELECT json_agg(json_build_object('user_id', u.user_id, 'username', u.username, 'email', u.email))
+         FROM task_assignee ta
+         JOIN users u ON ta.user_id = u.user_id
+         WHERE ta.task_id = t.task_id) as assignees
+       FROM task t
+       JOIN task_assignee ta ON t.task_id = ta.task_id
+       JOIN project p ON t.project_id = p.project_id
+       WHERE ta.user_id = $1
+       ORDER BY t.due_date ASC NULLS LAST, t.priority DESC`,
+      [userId]
+    );
+
+    console.info(
+      `getUserTasks: Retrieved ${tasks.rowCount} tasks for user ${userId}`
+    );
+    res.status(200).json(tasks.rows);
+  } catch (error) {
+    console.error("getUserTasks error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+projectMemberRouter.js
+```javascript
+// routes/projectMemberRouter.js
+import express from "express";
+import {
+  addProjectMember,
+  removeProjectMember,
+} from "../controllers/projectMemberController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.use(authMiddleware);
+
+router.post("/:projectId/members", addProjectMember);
+router.delete("/:projectId/members/:userId", removeProjectMember);
+
+export default router;
+```
+
+projectMemberController.js
+```javascript
+// controllers/projectMemberController.js
+import { query } from "../config/database.js";
+
+export async function addProjectMember(req, res) {
+  console.info(
+    "addProjectMember: Request received, params=" +
+      JSON.stringify(req.params) +
+      ", body=" +
+      JSON.stringify(req.body)
+  );
+  try {
+    const { projectId } = req.params;
+    let { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: "Missing required field: userId." });
+    }
+    userId = userId.trim();
+    // Verify requester is the owner
+    const ownerRes = await query(
+      "SELECT owner_id FROM project WHERE project_id = $1",
+      [projectId]
+    );
+    console.debug(
+      "addProjectMember: Owner response: " + JSON.stringify(ownerRes)
+    );
+    if (!ownerRes.rows[0] || ownerRes.rows[0].owner_id !== req.user.userId) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    // Add user to project_member
+    await query(
+      "INSERT INTO project_member (project_id, user_id) VALUES ($1, $2)",
+      [projectId, userId]
+    );
+    console.debug(
+      `addProjectMember: Project member insertion complete for project ${projectId}`
+    );
+    console.info(
+      `addProjectMember: Member ${userId} added to project ${projectId}`
+    );
+    res.status(201).json({ message: "User added to project" });
+  } catch (error) {
+    console.error("addProjectMember error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function removeProjectMember(req, res) {
+  console.info(
+    "removeProjectMember: Request received, params=" +
+      JSON.stringify(req.params)
+  );
+  try {
+    const { projectId, userId } = req.params;
+    // Verify requester is the owner
+    const ownerRes = await query(
+      "SELECT owner_id FROM project WHERE project_id = $1",
+      [projectId]
+    );
+    console.debug(
+      "removeProjectMember: Owner response: " + JSON.stringify(ownerRes)
+    );
+    if (!ownerRes.rows[0] || ownerRes.rows[0].owner_id !== req.user.userId) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    // Remove user from project_member
+    await query(
+      "DELETE FROM project_member WHERE project_id = $1 AND user_id = $2",
+      [projectId, userId]
+    );
+    console.debug(
+      `removeProjectMember: Deletion query complete for user ${userId} and project ${projectId}`
+    );
+    console.info(
+      `removeProjectMember: Member ${userId} removed from project ${projectId}`
+    );
+    res.status(200).json({ message: "User removed from project" });
+  } catch (error) {
+    console.error("removeProjectMember error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+- attachmentsRouter.js
+```javascript
+// routes/attachmentsRouter.js
+import express from "express";
+import {
+  createAttachment,
+  getAttachment,
+  getAllAttachments,
+  updateAttachment,
+  deleteAttachment,
+} from "../controllers/attachmentController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.use(authMiddleware);
+
+router.post("/", createAttachment);
+router.get("/", getAllAttachments);
+router.get("/:id", getAttachment);
+router.put("/:id", updateAttachment);
+router.delete("/:id", deleteAttachment);
+
+export default router;
+```
+
+- attachmentController.js
+```javascript
+// controllers/attachmentController.js
+import { query } from "../config/database.js";
+
+// Create attachment - checking user membership via task
+export async function createAttachment(req, res) {
+  console.info(
+    "createAttachment: Request received, body=" + JSON.stringify(req.body)
+  );
+  try {
+    // New input validation and sanitization
+    const { attachmentName, taskId, file_url, file_type } = req.body;
+    if (!attachmentName || !taskId || !file_url || !file_type) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+    const sanitizedAttachmentName = attachmentName.trim();
+    const sanitizedTaskId = taskId.trim();
+    const sanitizedFile_url = file_url.trim();
+    const sanitizedFile_type = file_type.trim();
+    // Verify user membership in the task's project
+    const membershipCheck = await query(
+      `SELECT t.task_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [sanitizedTaskId, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to add attachment to this task" });
+    }
+    const newIdRes = await query("SELECT generate_attachment_id() as id");
+    const attachmentId = newIdRes.rows[0].id;
+    await query(
+      `INSERT INTO attachment (attachment_id, attachment_name, task_id, file_url, file_type)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        attachmentId,
+        sanitizedAttachmentName,
+        sanitizedTaskId,
+        sanitizedFile_url,
+        sanitizedFile_type,
+      ]
+    );
+    console.info(
+      `createAttachment: Attachment ${attachmentId} created on task ${sanitizedTaskId}`
+    );
+    res.status(201).json({ message: "Attachment created", attachmentId });
+  } catch (error) {
+    console.error("createAttachment error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Get a single attachment with membership check
+export async function getAttachment(req, res) {
+  console.info(
+    "getAttachment: Request received, params=" + JSON.stringify(req.params)
+  );
+  try {
+    const { id } = req.params;
+    const attachmentRes = await query(
+      "SELECT * FROM attachment WHERE attachment_id = $1",
+      [id]
+    );
+    if (attachmentRes.rowCount === 0)
+      return res.status(404).json({ error: "Attachment not found" });
+    const attachment = attachmentRes.rows[0];
+    // Verify user membership via the task on which the attachment is attached
+    const membershipCheck = await query(
+      `SELECT t.task_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [attachment.task_id, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to view this attachment" });
+    }
+    console.info(`getAttachment: Attachment ${id} retrieved`);
+    res.status(200).json(attachment);
+  } catch (error) {
+    console.error("getAttachment error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Get all attachments; if taskId provided, check membership, else retrieve attachments for allowed tasks
+export async function getAllAttachments(req, res) {
+  console.info(
+    "getAllAttachments: Request received, query=" + JSON.stringify(req.query)
+  );
+  try {
+    const { taskId } = req.query;
+    if (taskId) {
+      const membershipCheck = await query(
+        `SELECT t.task_id
+         FROM task t
+         JOIN project p ON t.project_id = p.project_id
+         LEFT JOIN project_member pm ON p.project_id = pm.project_id
+         WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+        [taskId, req.user.userId]
+      );
+      if (membershipCheck.rowCount === 0) {
+        return res
+          .status(403)
+          .json({ error: "Not authorized to view attachments for this task" });
+      }
+      const result = await query(
+        "SELECT * FROM attachment WHERE task_id = $1",
+        [taskId]
+      );
+      console.info(
+        `getAllAttachments: Attachments for task ${taskId} retrieved`
+      );
+      return res.status(200).json(result.rows);
+    } else {
+      const result = await query(
+        `SELECT a.*
+         FROM attachment a
+         JOIN task t ON a.task_id = t.task_id
+         JOIN project p ON t.project_id = p.project_id
+         LEFT JOIN project_member pm ON p.project_id = pm.project_id
+         WHERE p.owner_id = $1 OR pm.user_id = $1`,
+        [req.user.userId]
+      );
+      console.info(
+        "getAllAttachments: Attachments for allowed tasks retrieved"
+      );
+      return res.status(200).json(result.rows);
+    }
+  } catch (error) {
+    console.error("getAllAttachments error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Update attachment with membership check
+export async function updateAttachment(req, res) {
+  console.info(
+    "updateAttachment: Request received, params=" +
+      JSON.stringify(req.params) +
+      ", body=" +
+      JSON.stringify(req.body)
+  );
+  try {
+    const { id } = req.params;
+    // New input validation and sanitization
+    const { attachmentName, file_url, file_type } = req.body;
+    if (!attachmentName || !file_url || !file_type) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+    const sanitizedAttachmentName = attachmentName.trim();
+    const sanitizedFile_url = file_url.trim();
+    const sanitizedFile_type = file_type.trim();
+    const attachmentRes = await query(
+      "SELECT * FROM attachment WHERE attachment_id = $1",
+      [id]
+    );
+    if (attachmentRes.rowCount === 0)
+      return res.status(404).json({ error: "Attachment not found" });
+    const attachment = attachmentRes.rows[0];
+    const membershipCheck = await query(
+      `SELECT t.task_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [attachment.task_id, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to update this attachment" });
+    }
+    await query(
+      `UPDATE attachment SET attachment_name = $1, file_url = $2, file_type = $3
+       WHERE attachment_id = $4`,
+      [sanitizedAttachmentName, sanitizedFile_url, sanitizedFile_type, id]
+    );
+    console.info(`updateAttachment: Attachment ${id} updated`);
+    res.status(200).json({ message: "Attachment updated" });
+  } catch (error) {
+    console.error("updateAttachment error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Delete attachment with membership check
+export async function deleteAttachment(req, res) {
+  console.info(
+    "deleteAttachment: Request received, params=" + JSON.stringify(req.params)
+  );
+  try {
+    const { id } = req.params;
+    const attachmentRes = await query(
+      "SELECT * FROM attachment WHERE attachment_id = $1",
+      [id]
+    );
+    if (attachmentRes.rowCount === 0)
+      return res.status(404).json({ error: "Attachment not found" });
+    const attachment = attachmentRes.rows[0];
+    const membershipCheck = await query(
+      `SELECT t.task_id
+       FROM task t
+       JOIN project p ON t.project_id = p.project_id
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE t.task_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [attachment.task_id, req.user.userId]
+    );
+    if (membershipCheck.rowCount === 0) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to delete this attachment" });
+    }
+    await query("DELETE FROM attachment WHERE attachment_id = $1", [id]);
+    console.info(`deleteAttachment: Attachment ${id} deleted`);
+    res.status(200).json({ message: "Attachment deleted" });
+  } catch (error) {
+    console.error("deleteAttachment error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+แล้วอย่าลืม import router เข้ามาใน index.js
+```javascript
+import express from "express";
 
 
 
