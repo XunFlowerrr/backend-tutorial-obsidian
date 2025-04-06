@@ -1,0 +1,500 @@
+  } catch (err) {
+    console.error("Auth middleware error", err);
+    return res.status(500).json({ error: "Authentication error" });
+  }
+}
+```
+#### 7.3.2 ลองสร้าง Endpoint ใหม่เพื่อลองดึงข้อมูล User ดู
+ในไฟล์ authRouter.js ให้ลองสร้าง Endpoint ใหม่ขึ้นมา
+```javascript
+// authRouter.js
+import express from "express";
+import { registerUser, loginUser,  getMe } from "../controllers/authController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.post("/register", registerUser); // POST /api/v1/auth/register
+router.post("/login", loginUser); // POST /api/v1/auth/login
+
+// เป็นการบอกว่าให้ใช้ middleware ก่อนจะส่งไปยัง controller getMe น้ะะ
+router.get("/me", authMiddleware, getMe); // GET /api/v1/auth/me
+
+export default router;
+
+```
+แล้วใน authController.js ให้ลองสร้างฟังก์ชัน getMe ขึ้นมา
+```javascript
+// authController.js
+import bcrypt from "bcrypt";
+import { query } from "../config/database.js";
+import jwt from "jsonwebtoken";
+
+export async function registerUser(req, res) {
+  try {
+    const { username, email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        error: "Please provide username, email, and password.",
+      });
+    }
+
+    // ใส่ role ไว้ก่อน
+    const role = "user";
+
+    // เช็คว่ามี email นี้อยู่ในระบบหรือไม่ ถ้ามีให้ return error
+    const existing = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (existing.rowCount > 0) {
+      return res.status(400).json({
+        error: "User with this email already exists.",
+      });
+    }
+
+    // สร้าง user_id ใหม่
+    const idRes = await query("SELECT generate_user_id() as id");
+    const user_id = idRes.rows[0].id;
+
+    // ใช้ bcrypt ในการเข้ารหัส Password พร้อมกับ Salt
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // สร้าง User ใหม่ใน ตาราง users
+    await query(
+      `INSERT INTO users (user_id, username, email, password, role)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user_id, username, email, hashedPassword, role]
+    );
+
+    // ส่ง Response กลับไปว่า User ลงทะเบียนสำเร็จ
+    res.status(201).json({
+      success: true,
+      message: "Registration successful",
+      userId: user_id,
+    });
+  } catch (error) {
+    // Handle any unexpected errors
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+export async function loginUser(req, res) {
+  try {
+    const { email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Please provide email and password.",
+      });
+    }
+
+    // หา User ใน Database
+    const userRes = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (userRes.rowCount === 0) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = userRes.rows[0];
+
+    // ตรวจสอบ Password กับ Hashed Password ที่เก็บใน Database
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // สร้าง JWT Token โดยใช้ fucntion generateToken ที่เราสร้างขึ้น
+    const token = generateToken(user);
+
+    console.info(`User ${user.user_id} logged in successfully`);
+
+    // ส่ง Response กลับไปว่า User Login สำเร็จ
+    res.status(200).json({
+      success: true,
+      token,
+      userId: user.user_id,
+      name: user.username || user.email.split("@")[0],
+      email: user.email,
+    });
+  } catch (error) {
+    // ถ้ามี Error ให้ส่ง Response กลับไปว่า Internal server error
+    console.error("Login error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getMe(req, res) {
+  try {
+    const { userId } = req.user;
+    const userRes = await query(
+      "SELECT user_id, username, email, role FROM users WHERE user_id = $1",
+      [userId]
+    );
+    if (userRes.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userRes.rows[0];
+
+    res.status(200).json({
+      userId: user.user_id,
+      name: user.username,
+      email: user.email,
+      role: user.role,
+    });
+  } catch (error) {
+    log.error("Get current user error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+function generateToken(user) {
+  // สร้าง JWT Token โดยใช้ jsonwebtoken jwt.sign คือ ฟังก์ชันที่ใช้ในการสร้าง Token โดยที่เราจะส่งข้อมูลที่เราต้องการเก็บใน Token ไป
+  return jwt.sign(
+    {
+      userId: user.user_id,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET, // Secret Key ที่ใช้ในการเข้ารหัส Token
+    { expiresIn: "15d" }
+  );
+}
+```
+
+#### 7.3.3 ทดสอบโดย Postman
+ลองทดสอบโดยการส่ง GET Request ไปที่
+```
+http://localhost:3000/api/v1/auth/me
+```
+
+แล้วแนบ Token ที่ได้จากการ Login ไปใน Header
+```
+Authorization: Bearer <your_token_here>
+```
+
+![[20250403-1010-16.8296460.mp4]]
+เมื่อทำสำเร็จ Backend จะตอบกลับ
+``` json
+{
+  "userId":"00001",
+  "name":"testuser",
+  "email":"test@gmail.com",
+  "role":"user"
+}
+```
+
+เท่านี้เราก็สำเร็จในการสร้างระบบ Authentication พร้อม Middleware เรียบร้อยแล้วพร้อมที่จะไปทำในส่วนที่เหลือของโปรเจคกันต่อ
+
+### **7.4 Implement CRUD operations สำหรับตารางอื่นๆ**
+หลังจาก Backend ของเราสามารถยืนยันตัวตนของ User ได้แล้ว
+ที่เหลือก็แค่ระบบอื่นๆ เช่น การจัดการ Project, Task, Assignment, Attachment และอื่นๆ
+
+โดยที่ข้อมูลเหล่านี้จะมี Opearation หลักๆคือ
+- การสร้าง (Create)
+- การอ่าน (Read)
+- การแก้ไข (Update)
+- การลบ (Delete)
+เรียกรวมทั้งหมดนี้เรามักจะเรียกว่า CRUD Operation เหล่านี้เป็น Operation พื้นฐานที่ทุกตารางควรจะมี เว้นแต่มีบางตารางที่ต้องมีการจัดการเป็นพิเศษก็อาจจะไม่มีก็ได้
+
+แต่สำหรับเรา แต่ละตารางจะมี CRUD Operation ดังนั้นเราจะมาทำ CRUD Operation สำหรับตาราง Project เป็นตัวอย่างกัน
+
+#### 7.4.1 สร้างไฟล์ projectRouter.js และ projectController.js
+
+ใน Folder routes ให้สร้างไฟล์ projectRouter.js ขึ้นมา
+![[Pasted image 20250403172307.png]]
+
+```javascript
+// routes/projectRouter.js
+import express from "express";
+import {
+  createProject,
+  getProjectFromID,
+  getProject,
+  updateProject,
+  deleteProject,
+} from "../controllers/projectController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.post("/", authMiddleware, createProject);
+router.get("/", authMiddleware, getProjectFromID);
+
+// /:id เรียกว่า reqest parameter ตัวอย่างเช่น http://localhost:3000/projects/1
+// เป็นตัวแปรที่ใช้ในการระบุ project_id ที่เราต้องการดึงข้อมูลที่สามารถใส่มาใน URL ได้เลยโดยไม่ต้องส่งใน body
+// ซึ่ง Method GET ปกติจะไม่ส่งข้อมูลใน body แต่จะส่งใน URL แทน
+// ดังนั้นเราจึงใช้ request parameter ในการดึงข้อมูล project_id ที่เราต้องการ
+router.get("/:id", authMiddleware, getProject);
+router.put("/:id", authMiddleware, updateProject);
+router.delete("/:id", authMiddleware, deleteProject);
+
+export default router;
+
+```
+
+ใน Folder controllers ให้สร้างไฟล์ projectController.js ขึ้นมา
+![[Pasted image 20250403172611.png]]
+
+```javascript
+// controllers/projectController.js
+import { query } from "../config/database.js";
+
+export async function createProject(req, res) {}
+
+export async function getAllProjects(req, res) {}
+
+export async function getProjectFromID(req, res) {}
+
+export async function updateProject(req, res) {}
+
+export async function deleteProject(req, res) {}
+```
+
+เดี๋ยวจะพาทำไปทีละฟังก์ชันนะ
+เริ่มจากการสร้าง Project ก่อน
+
+#### 7.4.2 Create Project
+
+```javascript
+export async function createProject(req, res) {
+  try {
+    // เริ่มจากการดึงข้อมูลที่จำเป็นจาก request body
+    const { projectName, projectDescription, category } = req.body;
+
+    // ตรวจสอบว่าข้อมูลที่จำเป็นถูกส่งมาหรือไม่
+    if (!projectName || !category) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    // สร้าง project_id ใหม่
+    // โดยใช้ฟังก์ชัน generate_project_id() ที่เราสร้างไว้ใน init.sql
+    const idRes = await query("SELECT generate_project_id() as id");
+    const projectId = idRes.rows[0].id; // ดึง project_id ที่สร้างขึ้นมา
+
+    // สร้าง Project ใหม่ใน ตาราง project
+    await query(
+      `INSERT INTO project (project_id, project_name, project_description, owner_id, category)
+         VALUES ($1, $2, $3, $4, $5)`,
+      [projectId, projectName, projectDescription, req.user.userId, category] // ณ ต่ำแหน่ง $n จะถูกแทนที่ด้วยค่าที่เราส่งไปตามลำดับ
+    );
+
+    res.status(201).json({ message: "Project created", projectId });
+  } catch (error) {
+    console.error("Create project error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.3 Get All Projects
+```javascript
+export async function getAllProjects(req, res) {
+  try {
+    // ดึงข้อมูลโปรเจคทั้งหมดที่ผู้ใช้เป็นเจ้าของหรือเป็นสมาชิก
+    const result = await query(
+      `SELECT p.* FROM project p
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE p.owner_id = $1 OR pm.user_id = $1`,
+      [req.user.userId]
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error("getAllProjects error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+##### 7.4.4 Get Project From ID
+```javascript
+export async function getProjectFromID(req, res) {
+  try {
+    // ดึงข้อมูลโปรเจคจาก project_id ที่ส่งมาใน request parameters
+    // ตัวอย่าง URL: http://localhost:3000/projects/1
+    const { id } = req.params;
+
+    // หาข้อมูลโปรเจคที่มี project_id ตรงกับที่ส่งมาใน request parameters
+    const result = await query(
+      `SELECT p.* FROM project p
+       LEFT JOIN project_member pm ON p.project_id = pm.project_id
+       WHERE p.project_id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)`,
+      [id, req.user.userId]
+    );
+
+    // ถ้าไม่พบข้อมูลโปรเจคที่ตรงกับ project_id ที่ส่งมาใน request parameters
+    // จะส่ง status 404 Not Found กลับไป
+    if (result.rowCount === 0)
+      return res.status(404).json({ error: "Not found" });
+
+    // ถ้าพบข้อมูลโปรเจคที่ตรงกับ project_id ที่ส่งมาใน request parameters
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error("getProject error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.5 Update Project
+```javascript
+export async function updateProject(req, res) {
+  try {
+    const { id } = req.params; // ดึง project_id จาก request parameters
+    const { projectName, projectDescription, category } = req.body; // ดึงข้อมูลที่ส่งมาใน request body
+
+    // ตรวจสอบว่าข้อมูลที่จำเป็นถูกส่งมาหรือไม่
+    if (!projectName || !category) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    // ทำการตรวจสอบว่าคนที่ส่งคำขออัปเดตโปรเจคนี้เป็นเจ้าของโปรเจคหรือไม่
+    const ownerCheck = await query(
+      "SELECT owner_id FROM project WHERE project_id = $1",
+      [id]
+    );
+    if (
+      !ownerCheck.rows[0] ||
+      ownerCheck.rows[0].owner_id !== req.user.userId
+    ) {
+      // ถ้าคนที่ส่งคำขอไม่ใช่เจ้าของโปรเจค หรือไม่พบโปรเจคในฐานข้อมูล จะตอบกลับด้วย status 403 และไม่ให้ทำการอัปเดต
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // ถ้าผ่านการตรวจสอบแล้ว ทำการอัปเดตโปรเจค
+    await query(
+      `UPDATE project SET project_name=$1, project_description=$2, category=$3
+       WHERE project_id=$4`,
+      [projectName, projectDescription, category, id]
+    );
+    // ถ้าอัปเดตสำเร็จ จะตอบกลับด้วย status 200 และข้อความว่า "Project updated"
+    res.status(200).json({ message: "Project updated" });
+  } catch (error) {
+    // ถ้ามีข้อผิดพลาดเกิดขึ้น จะตอบกลับด้วย status 500 และข้อความว่า "Internal server error"
+    console.error("updateProject error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.6 Delete Project
+```javascript
+export async function deleteProject(req, res) {
+  try {
+    const { id } = req.params; // ดึง project_id จาก request parameters
+
+    // ทำการตรวจสอบว่าคนที่ส่งคำขอจะลบโปรเจคนี้เป็นเจ้าของโปรเจคหรือไม่
+    const ownerCheck = await query(
+      "SELECT owner_id FROM project WHERE project_id = $1",
+      [id]
+    );
+    if (
+      !ownerCheck.rows[0] ||
+      ownerCheck.rows[0].owner_id !== req.user.userId
+    ) {
+      // ถ้าคนที่ส่งคำขอไม่ใช่เจ้าของโปรเจค หรือไม่พบโปรเจคในฐานข้อมูล จะตอบกลับด้วย status 403 และไม่ให้ทำการลบ
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // ถ้าผ่านการตรวจสอบแล้ว ทำการลบโปรเจค
+    await query("DELETE FROM project WHERE project_id = $1", [id]);
+
+    // ถ้าลบสำเร็จ จะตอบกลับด้วย status 200 และข้อความว่า "Project deleted"
+    res.status(200).json({ message: "Project deleted" });
+  } catch (error) {
+    // ถ้ามีข้อผิดพลาดเกิดขึ้น จะตอบกลับด้วย status 500 และข้อความว่า "Internal server error"
+    console.error("deleteProject error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+```
+
+#### 7.4.7 สร้าง Route ใหม่ใน index.js
+ในไฟล์ index.js ให้ import projectRouter เข้ามา
+```javascript
+import express from "express";
+import dotenv from "dotenv";
+import { testConnection } from "./test.js";
+import authRouter from "./routes/authRouter.js";
+import projectRouter from "./routes/projectRouter.js";
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/projects", projectRouter);
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  testConnection();
+});
+```
+
+#### 7.4.8 ทดสอบ CRUD Project
+ลองทดสอบ CRUD Project โดยใช้ Postman
+![[postman_test.mp4]]
+
+1. **Create Project**
+    - Method: POST
+    - URL: http://localhost:3000/api/v1/projects
+    - Body:
+  ```json
+  {
+    "projectName": "Test Project",
+    "projectDescription": "This is a test project",
+    "category": "Development"
+  }
+  ```
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  2. **Get All Projects**
+    - Method: GET
+    - URL: http://localhost:3000/api/v1/projects
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  3. **Get Project From ID**
+    - Method: GET
+    - URL: http://localhost:3000/api/v1/projects/<project_id>
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  4. **Update Project**
+    - Method: PUT
+    - URL: http://localhost:3000/api/v1/projects/<project_id>
+    - Body:
+  ```json
+  {
+    "projectName": "Updated Project",
+    "projectDescription": "This is an updated project",
+    "category": "Development"
+  }
+  ```
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+  5. **Delete Project**
+    - Method: DELETE
+    - URL: http://localhost:3000/api/v1/projects/<project_id>
+    - Header:
+  ```
+  Authorization: Bearer <your_token_here>
+  ```
+
+#### 7.4.9 สำหรับตารางอื่นๆ
+สำหรับตารางอื่นๆก็จะมี CRUD Operation ที่คล้ายกัน

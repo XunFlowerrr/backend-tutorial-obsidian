@@ -1,0 +1,500 @@
+- 3. เปิด Postman ขึ้นมา
+- 4. สร้าง Request ใหม่ โดยเลือก Method เป็น POST
+- 5. ใส่ URL เป็น
+```
+http://localhost:3000/api/v1/auth/register
+```
+- 6. กด Send
+- 7. ถ้าสำเร็จจะได้ Response กลับมาว่า
+```json
+{
+    "message": "User registered successfully"
+}
+```
+
+![[Untitled video - Made with Clipchamp.mp4]]
+
+ถ้าทำสำเร็จจะได้แสดงว่า เราได้สร้าง Router และ Controller สำหรับ User ได้ถูกต้องแล้ว
+แต่ตอนนี้เรายังไม่ได้ส่งข้อมูลอะไรไปยัง Backend เลย เราส่ง Request เปล่าๆ ไป
+ดังนั้นขั้นตอนต่อไปเราจะต้องส่งข้อมูลไปยัง Backend ด้วย
+
+
+#### 7.2.5 ส่งข้อมูลไปยัง Backend
+ในตอนนี้เราจะส่งข้อมูลไปยัง Backend โดยการใช้ Body ของ Request
+Body คือข้อมูลที่เราต้องการส่งไปยัง Backend โดยเราสามารถส่งข้อมูลได้หลายรูปแบบ เช่น JSON, Form Data, x-www-form-urlencoded
+ในที่นี้เราจะใช้ JSON เป็นรูปแบบในการส่งข้อมูลไปยัง Backend
+แต่ก่อนที่ Backend ของเราจะรับ Body ที่เป็น JSON ได้ เราต้องบอก Express ว่าให้ใช้ Body Parser ในการแปลง Body ที่ส่งมาจาก Client(Frontend) เป็น JSON ก่อน
+
+ใน index.js ให้เพิ่ม
+```javascript
+// index.js
+import express from "express";
+import dotenv from "dotenv";
+import { testConnection } from "./test.js";
+import authRouter from "./routes/authRouter.js";
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json()); // เพิ่มการใช้ Body Parser
+app.use("/api/v1/auth", authRouter);
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  testConnection();
+});
+
+```
+
+และใน authController.js ให้เพิ่มการรับข้อมูลจาก Body ของ Request
+```javascript
+// authController.js
+export const registerUser = async (req, res) => {
+  const { username, password } = req.body; // รับข้อมูลจาก Body
+  res
+    .status(200)
+    .send({ message: "User registered successfully", username, password });
+};
+export const loginUser = async (req, res) => {
+  const { username, password } = req.body; // รับข้อมูลจาก Body
+  res
+    .status(200)
+    .send({ message: "User logged in successfully", username, password });
+};
+
+```
+
+แล้วใน Postman ให้เลือก Body และเลือก raw และเลือก JSON แล้วใส่ข้อมูลตามนี้
+```
+{
+    "username": "testuser",
+    "password": "testpassword"
+}
+```
+แล้วกด Send
+
+![[20250402-1242-22.4709951.mp4]]
+
+ถ้าเราทำถูกต้องจะได้ Response กลับมาว่า
+```json
+{
+  "message":"User registered successfully",
+  "username":"testuser",
+  "password":"testpassword"
+}
+```
+
+#### 7.2.6 ทำ Logic การลงทะเบียน (Register)
+
+ใน authController.js ให้ทำ Logic การลงทะเบียน (Register) และเข้าสู่ระบบ (Login) แต่การเก็บข้อมูล User นั้นจะมีประเด็นนิดหน่อยนั่นคือ
+- เราไม่ควรเก็บ Password ของ User ไว้ใน Database แบบโดยไม่เข้ารหัส
+
+ดังนั้นเราจะทำยังไงดี
+คำตอบก็คือ มี Package(Library) ที่ชื่อว่า bcrypt เป็น Package ที่ใช้ในการเข้ารหัสต่างๆ (Encrypt) ข้อมูลให้ใช้ได้ง่ายๆผ่าน Fucntion ที่ Package นี้ให้มา
+
+เกร็ดความรู้
+hash function นั้นมีขั้นตอนการเข้ารหัสที่แน่นอน ซึ่งหมายความว่า
+- ถ้า Input เหมือนเดิม Hash output ก็จะเหมือนเดิม
+
+สมมุติว่ามี User 2 คนที่ตั้ง Password เหมือนกันในระบบของเราก็จะมี Password ที่เหมือนกันใน Database ซึ่งเป็นเรื่องที่ไม่ดี เพราะถ้าหากมีคนแฮกข้อมูลใน Database ของเราได้ เขาก็จะรู้ Password ของ User ทุกคนที่ใช้ Password เดียวกัน
+
+ดังนั้นจึงมีสิ่งที่เรียกว่า Salt
+Salt คือการเพิ่มข้อมูลที่ไม่ซ้ำกันเข้าไปใน Passwordเดิม ก่อนที่จะทำการ Hash
+มันเหมือนกับการส่ม string ขึ้นมาตัวนึง ต่อท้ายกับ Password แล้วค่อยเอาอันที่ต่อแล้วไป Hash
+เนื่องจาก Salt นั้นจะถูกสร้างขึ้นมาแบบสุ่มในแต่ละครั้งที่มีการลงทะเบียน User ใหม่
+ดังนั้นถ้าสมมุติว่า User 2 คนใช้ Password เดียวกัน แต่ Salt ที่ใช้ในการ Hash แตกต่างกัน
+Password ที่ได้จากการ Hash ก็จะไม่เหมือนกัน
+
+ตัวอย่าง
+```javascript
+const bcrypt = require("bcrypt");
+
+const password1 = "test";
+const password2 = "test";
+
+// bcrypt.hashSync คือการ Hash Password
+const hashedPassword1 = bcrypt.hashSync(password1, 10); // 10 คือการใส่ Salt
+const hashedPassword2 = bcrypt.hashSync(password2, 10); // 10 คือการใส่ Salt
+
+console.log("Hashed Password 1:", hashedPassword1);
+console.log("Hashed Password 2:", hashedPassword2);
+```
+
+Output
+```
+Hashed Password 1: $2b$10$F4ZNSJRu7HWsqc7GenrerOx1NbsMTzh36l6nhZUDjBOyJpoVfu/im
+Hashed Password 2: $2b$10$a2nwTbO1is7pg5ZOOoZplu7dRbBn43ArHwIg1F.s4Wf9L4zhL1606
+```
+
+จะเห็นว่า Hashed Password 1 และ Hashed Password 2 นั้นไม่เหมือนกัน
+แม้ว่าจะใช้ Password เดียวกันก็ตาม
+ดังนั้นการใช้ Salt จะทำให้ Password ที่เก็บใน Database นั้นไม่เหมือนกัน แม้ว่าจะมี User 2 คนที่ใช้ Password เดียวกันก็ตาม
+
+
+
+ดังนั้นเราจะใช้ Package นี้ในการเข้ารหัส Password ของ User ก่อนที่จะเก็บลง Database
+เราจะใช้ bcrypt ในการเข้ารหัส Password ของ User โดยการติดตั้ง Package นี้ก่อน
+
+```bash
+npm install bcrypt
+```
+แล้วใน authController.js ให้ทำการ import bcrypt เข้ามา
+```javascript
+// authController.js
+import bcrypt from "bcrypt";
+import { query } from "../config/database.js";
+
+export async function registerUser(req, res) {
+  try {
+    const { username, email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        error: "Please provide username, email, and password.",
+      });
+    }
+
+    // ใส่ role ไว้ก่อน
+    const role = "user";
+
+    // เช็คว่ามี email นี้อยู่ในระบบหรือไม่ ถ้ามีให้ return error
+    const existing = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (existing.rowCount > 0) {
+      return res.status(400).json({
+        error: "User with this email already exists.",
+      });
+    }
+
+    // สร้าง user_id ใหม่
+    const idRes = await query("SELECT generate_user_id() as id");
+    const user_id = idRes.rows[0].id;
+
+    // ใช้ bcrypt ในการเข้ารหัส Password พร้อมกับ Salt
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // สร้าง User ใหม่ใน ตาราง users
+    await query(
+      `INSERT INTO users (user_id, username, email, password, role)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user_id, username, email, hashedPassword, role]
+    );
+
+    // ส่ง Response กลับไปว่า User ลงทะเบียนสำเร็จ
+    res.status(201).json({
+      success: true,
+      message: "Registration successful",
+      userId: user_id,
+    });
+  } catch (error) {
+    // ถ้ามี Error ให้ส่ง Response กลับไปว่า Internal server error
+    res.status(500).json({ error: "Internal server error" });
+  }
+} catch (error) {
+  // Handle any unexpected errors
+  console.error(error);
+  res.status(500).json({ error: "Internal server error" });
+}
+
+export const loginUser = async (req, res) => {
+  const { username, password } = req.body; // รับข้อมูลจาก Body
+  res
+    .status(200)
+    .send({ message: "User logged in successfully", username, password });
+};
+
+```
+#### 7.2.7 ทำ Logic การเข้าสู่ระบบ (Login)
+
+โอเค! ตอนนี้เราจะทำ Logic การเข้าสู่ระบบ (Login) โดยการตรวจสอบว่า User มีอยู่ในระบบหรือไม่
+แต่การ Login ก็มีประเด็นเหมือนกัน
+นั่นคือ เราเป็น Backend เราไม่รู้ว่า frontend ของเรานั้นเข้าสู่ระบบหรือยัง
+
+📌 สมมุติว่า User คนหนึ่ง Login เข้ามาในระบบผ่านหน้าเว็บสำเร็จ แล้วหลังจากนั้นเขาก็เข้าไปยังหน้า Dashboard
+**คำถามคือ** เราจะรู้ได้ยังไงว่า User คนนี้ Login แล้วจริง ๆ?
+
+✅ วิธีที่นิยมใช้ในการแก้ปัญหานี้ในระบบ Web ทั่วไปก็คือ **การส่ง Token (โทเคน)** กลับไปให้ฝั่ง Frontend หลังจากที่ Login สำเร็จ
+
+---
+
+##### 🔑 Token คืออะไร?
+
+- Token คือ “หลักฐานยืนยันตัวตน” ที่เราจะสร้างขึ้นมา และส่งกลับไปให้ Client (Frontend)
+- โดยทั่วไป Token จะเก็บข้อมูลของ User ที่ Login เข้ามา
+- แล้ว Frontend ก็จะต้องแนบ Token นี้มาด้วยทุกครั้งที่เรียกใช้งาน API ที่ต้องมีการยืนยันตัวตน
+
+---
+
+##### 🔐 แล้วเราจะสร้าง Token อย่างไร?
+
+💡 คำตอบคือ เราจะใช้ **JWT (JSON Web Token)**
+
+---
+
+##### JWT คืออะไร?
+
+JWT (JSON Web Token) คือ มาตรฐานการเข้ารหัสข้อมูลให้อยู่ในรูปแบบของ Token ที่สามารถใช้ส่งข้อมูลระหว่างระบบแบบปลอดภัย
+ซึ่งใน JWT จะมีทั้งหมด 3 ส่วนหลัก ๆ คือ:
+
+1. **Header** – บอกว่าใช้วิธีเข้ารหัสแบบไหน เช่น HS256
+2. **Payload** – ข้อมูลที่เราอยากฝังไว้ใน Token เช่น user_id, email, role เป็นต้น
+3. **Signature** – ลายเซ็นที่ใช้ยืนยันว่า Token นี้ถูกสร้างโดยเรา (Server)
+
+🧠 เมื่อ User Login สำเร็จ เราจะสร้าง JWT Token ให้ และแนบข้อมูลที่จำเป็นลงไปใน Payload
+จากนั้นส่ง Token กลับไปให้ฝั่ง Frontend เก็บไว้ เช่นใน LocalStorage หรือ Cookie
+
+และในการเรียก API ถัด ๆ ไป ฝั่ง Frontend ก็จะแนบ JWT Token นี้มาใน Header ของ HTTP Request
+เช่น:
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+ดังนั้นต่อกันเลยยย
+เราจะใช้ Package ที่ชื่อว่า jsonwebtoken ในการสร้าง Token เพื่อใช้ในการยืนยันตัวตนของผู้ใช้
+โดยการติดตั้ง Package นี้ก่อน
+```bash
+npm install jsonwebtoken
+```
+
+แล้วใน authController.js ให้ทำการ import jsonwebtoken เข้ามา
+```javascript
+// authController.js
+import bcrypt from "bcrypt";
+import { query } from "../config/database.js";
+import jwt from "jsonwebtoken";
+
+export async function registerUser(req, res) {
+  try {
+    const { username, email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        error: "Please provide username, email, and password.",
+      });
+    }
+
+    // ใส่ role ไว้ก่อน
+    const role = "user";
+
+    // เช็คว่ามี email นี้อยู่ในระบบหรือไม่ ถ้ามีให้ return error
+    const existing = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (existing.rowCount > 0) {
+      return res.status(400).json({
+        error: "User with this email already exists.",
+      });
+    }
+
+    // สร้าง user_id ใหม่
+    const idRes = await query("SELECT generate_user_id() as id");
+    const user_id = idRes.rows[0].id;
+
+    // ใช้ bcrypt ในการเข้ารหัส Password พร้อมกับ Salt
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // สร้าง User ใหม่ใน ตาราง users
+    await query(
+      `INSERT INTO users (user_id, username, email, password, role)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user_id, username, email, hashedPassword, role]
+    );
+
+    // ส่ง Response กลับไปว่า User ลงทะเบียนสำเร็จ
+    res.status(201).json({
+      success: true,
+      message: "Registration successful",
+      userId: user_id,
+    });
+  } catch (error) {
+    // Handle any unexpected errors
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function loginUser(req, res) {
+  try {
+    const { email, password } = req.body; // รับข้อมูลจาก Body
+
+    // เช็คว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Please provide email and password.",
+      });
+    }
+
+    // หา User ใน Database
+    const userRes = await query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (userRes.rowCount === 0) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = userRes.rows[0];
+
+    // ตรวจสอบ Password กับ Hashed Password ที่เก็บใน Database
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // สร้าง JWT Token โดยใช้ fucntion generateToken ที่เราสร้างขึ้น
+    const token = generateToken(user);
+
+    console.info(`User ${user.user_id} logged in successfully`);
+
+    // ส่ง Response กลับไปว่า User Login สำเร็จ
+    res.status(200).json({
+      success: true,
+      token,
+      userId: user.user_id,
+      name: user.username || user.email.split("@")[0],
+      email: user.email,
+    });
+  } catch (error) {
+    // ถ้ามี Error ให้ส่ง Response กลับไปว่า Internal server error
+    console.error("Login error: " + error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+function generateToken(user) {
+  // สร้าง JWT Token โดยใช้ jsonwebtoken jwt.sign คือ ฟังก์ชันที่ใช้ในการสร้าง Token โดยที่เราจะส่งข้อมูลที่เราต้องการเก็บใน Token ไป
+  return jwt.sign(
+    {
+      userId: user.user_id,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET, // Secret Key ที่ใช้ในการเข้ารหัส Token
+    { expiresIn: "15d" }
+  );
+}
+
+```
+
+^84a15c
+
+ก่อนใช้งาน JWT Token เราต้องสร้าง Secret Key ขึ้นมาก่อน
+ซึ่ง Secret Key นี้จะถูกใช้ในการเข้ารหัส Token และตรวจสอบความถูกต้องของ Token
+โดย Secret Key นี้จะต้องเก็บเป็นความลับ ไม่ควรเปิดเผยให้ใครรู้
+ในที่นี้เราจะใส่ String อะไรก็ได้ลงไปก่อน
+ไปที่ไฟล์ .env แล้วเพิ่มบรรทัดนี้เข้าไป
+
+ในไฟล์ .env
+```bash
+PORT=3000
+DATABASE_URL=postgres://admin:password@localhost:5432/taskmanagement
+JWT_SECRET=your_jwt_secret
+```
+
+แล้วลองทดสอบ Login ใหม่ใน Postman โดยการส่ง POST Request ไปที่
+```
+http://localhost:3000/api/v1/auth/login
+```
+และ Body
+```
+{
+    "email" : "test@gmail.com",
+    "password" : "testpassword"
+}
+```
+
+แล้วกด Send
+
+![[20250402-1930-54.5167538.mp4]]
+
+ถ้าทำได้สำเร็จจะได้รับการตอบกลับเป็นแบบด้านล่าง และเราจะได้ Token มาด้วย
+``` json
+{
+    "success": true,
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+    "userId": "00001",
+    "name": "testuser",
+    "email": "test@gmail.com"
+}
+```
+
+ใน Token ที่เราสร้างขึ้นมานั้นจะมีข้อมูลที่ Backend ตอบกลับไปให้ Frontend ฝั่งเก็บไว้ สิ่งที่ฝังไว้จะเป็นตาม Function [[Start Point#^84a15c | generateToken ของเรา]]
+ซึ่งเราสามารถลองนำ Token มาถอดรหัสได้ที่ https://jwt.is/
+
+![[20250403-0534-27.1798150.mp4]]
+
+![[Pasted image 20250403123553.png]]
+
+จากในรูปจะเห็นว่า Token ที่เราสร้างขึ้นมา เมื่อถอดรหัสนั้นจะมีข้อมูลที่เราฝังไว้
+และ Token นี้ Frontend จะต้องแนบไปกับทุก Request ที่ต้องการยืนยันตัวตน
+แล้ว Backend จะทอดออกมาดูว่า Token นี้เป็นของใครเพื่อที่จะใช้ใน Operation ที่ต้องการการยืนยันตัวตน
+
+โอเค! ตอนนี้เราทำการยืนยันตัวตนของ User ได้แล้ว
+ต่อไปเราจะทำให้ Backend ดึงข้อมูล User ที่ Login เข้ามาในระบบจาก Token ที่ส่งมาผ่าน Middleware กัน!
+
+### 7.3 สร้าง Middleware
+Middleware คือ ฟังก์ชันที่ทำงานระหว่าง Request และ Response
+Middleware จะทำงานก่อนที่ Request จะถูกส่งไปยัง Route Handler
+Middleware สามารถใช้ในการตรวจสอบ Token ที่ส่งมาจาก Client (Frontend) ว่าถูกต้องหรือไม่
+และสามารถใช้ในการดึงข้อมูล User จาก Token ที่ส่งมาด้วย
+
+เราจะมาลองดูภาพรวมกันว่าเป็นยังไง
+
+![[Pasted image 20250403141514.png]]
+เริ่มจากมี HTTP reqeust เข้ามาที่ Backend ของเราโดยต้องการไปยัง API ที่ตัว Router ก็จะมองดูว่า เส้นทางที่ต้องการไปนั้นได้มีการกำหนด Middleware ไว้หรือไม่
+ถ้ามีก็จะส่งต่อไปให้ Middleware ทำงานก่อน
+
+![[Pasted image 20250403142108.png]]
+เมื่อไปถึง Middleware, Middleware จะทำการตรวจสอบ Token ที่แนบมากับ Request ว่าถูกต้องหรือไม่พร้อมกับถอดรหัสดึงข้อมูล User ออกมาแล้วแนบข้อมูล User กลับเข้าไปใน Request
+
+![[Pasted image 20250403142504.png]]
+แล้ว Middleware จะส่งต่อ Request ที่มีข้อมูล User ไปยัง Route Handler
+
+
+![[Pasted image 20250403142926.png]]
+แล้วที่ route handler ก็จะมองหาข้อมูลที่แนบมาด้วยใน Request Header ที่ผ่านจาก Middleware มาแล้ว
+
+เท่านี้เราก็จะสามารถรู้ได้แล้วว่า User ที่ Login เข้ามานั้นคือใคร
+
+
+#### 7.3.1 สร้างไฟล์ Middleware
+ดังนั้นเริ่มเลยโดยเราจะสร้าง Folder ใหม่ชื่อว่า middleware และสร้างไฟล์ authMiddleware.js ขึ้นมา
+
+![[Pasted image 20250403144939.png]]
+
+```javascript
+import jwt from "jsonwebtoken";
+
+export function authMiddleware(req, res, next) {
+  try {
+    // เช็คว่า request มี header Authorization หรือไม่
+    const authHeader = req.headers.authorization;
+    let token = null;
+
+    // ดึง token จาก header Authorization ถ้ามี
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    }
+    // ถ้าไม่มี token ใน header Authorization ให้ลองดึงจาก cookie
+    else if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
+
+    // ถ้าไม่มี token ให้ส่ง response กลับไปว่าไม่อนุญาตให้เข้าถึง
+    if (!token) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // ถ้ามี token ให้ทำการ verify token ด้วย secret key
+    try {
+      // อันนี้คือการถอดรหัส token ออกมาโดยใช้ secret key ไว้ตรวจสอบว่า Token ที่ส่งมานั้นถูกต้องหรือไม่
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded; // เก็บข้อมูลผู้ใช้ใน request object ก่อนส่งต่อไปยัง route handler function
+      next(); // ถ้า token ถูกต้อง ให้เรียกใช้ next() เพื่อไปยัง route handler ถัดไป
+    } catch (jwtError) {
+      console.error("JWT verification failed", jwtError);
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }

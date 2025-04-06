@@ -1,0 +1,500 @@
+![[20250331-2234-58.4582297.mp4]]
+## **5. ใช้ Environment Variables**
+
+เนื่องจากบางครั้งเราต้องการเก็บข้อมูลที่เป็นความลับ เช่น รหัสผ่าน, Token, หรือ URL ของ Database ซึ่งไม่ควรเก็บไว้ในโค้ดโดยตรง หรือ บางตัวแปรที่เราต้องการให้เปลี่ยนแปลงได้ตามสภาพแวดล้อมเช่น เมื่อเรา deploy ขึ้น server จริงๆ เราอาจจะต้องการให้ URL ของ Database เปลี่ยนไปจาก localhost เป็น IP Address ของ Server จริงๆ หรือเมื่อเปลี่ยนจาก Development เป็น Production เราอาจจะต้องการให้ PORT เปลี่ยนไปจาก 3000 เป็น 80 หรือ 443 เป็นต้น
+ดังนั้นเราจึงต้องใช้ Environment Variables เพื่อเก็บข้อมูลเหล่านี้ โดยเราจะใช้ package ที่ชื่อว่า `dotenv` ในการโหลด Environment Variables จากไฟล์ `.env` เข้ามาใน process.env
+### **5.1 ติดตั้ง dotenv**
+พิมพ์คำสั่ง
+
+```bash
+npm install dotenv
+```
+
+### **5.2 สร้างไฟล์ .env**
+สร้างไฟล์ .env ในโฟลเดอร์ backend
+
+.env
+```env
+PORT=3000
+```
+
+### **5.3 ใช้งาน Environment Variables**
+ในไฟล์ index.js ให้ import package dotenv ขึ้นมา และเรียกใช้ฟังก์ชัน config() เพื่อโหลด Environment Variables จากไฟล์ .env เข้ามาใน process.env
+
+```javascript
+//index.js
+import express from "express";
+import dotenv from "dotenv";
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Hello World from GET request!");
+});
+app.get("/api/user", (req, res) => {
+  res.send("Hello World from GET request!");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
+```
+
+
+![[20250331-2253-26.3410778.mp4]]
+
+
+## **6. เขียนโค้ดเชื่อมต่อกับ Database**
+### **6.1 ติดตั้ง pg**
+พิมพ์คำสั่ง
+pg คือ package ที่ใช้ในการเชื่อมต่อกับ PostgreSQL Database
+
+```bash
+npm install pg
+```
+### **6.2 สร้าง Folder ชื่อ config และข้างในสร้างไฟล์ database.js**
+
+![[Pasted image 20250401061446.png]]
+
+database.js
+```javascript
+//database.js
+import pg from "pg";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+
+export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+export const query = async (text, params) => {
+
+  const start = Date.now();
+
+  const res = await pool.query(text, params);
+
+  const duration = Date.now() - start;
+
+  console.log("executed query", { text, duration, rows: res.rowCount });
+
+  return res;
+
+};
+```
+
+ใน .env ให้เพิ่ม DATABASE_URL ด้วยค่านี้
+```env
+PORT=3000
+DATABASE_URL=postgres://admin:password@localhost:5432/taskmanagement
+```
+
+![[20250331-2317-13.2749414.mp4]]
+
+### **6.3 ทดสอบว่าต่อ Database สำเร็จหรือไม่**
+
+สร้างไฟล์ test.js ในโฟลเดอร์ backend
+
+![[Pasted image 20250401110304.png]]
+
+test.js
+```javascript
+//test.js
+import { pool } from "./config/database.js";
+import dotenv from "dotenv";
+
+dotenv.config();
+export const testConnection = async () => {
+    try {
+        const client = await pool.connect();
+        console.log("Connected to the database");
+        client.release();
+      } catch (err) {
+       console.error("Error connecting to the database", err);
+      }
+};
+
+```
+
+แล้วใน index.js ให้เรียกใช้ฟังก์ชัน testConnection() ใน app.listen()
+```javascript
+//index.js
+import express from "express";
+import dotenv from "dotenv";
+import { testConnection } from "./test.js";
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Hello World from GET request!");
+});
+
+app.get("/api", (req, res) => {
+  res.send("Hello World from API GET request!");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  testConnection();
+});
+
+
+```
+
+![[Screen Recording 2025-04-01 111039.mp4]]
+
+ถ้าขึ้นว่า "Connected to the database" แสดงว่าเชื่อมต่อกับ Database สำเร็จแล้ว
+ถ้าขึ้นว่า Error ให้ตรวจสอบว่า Docker รันอยู่หรือเปล่า ถ้าไม่ได้ให้รันให้ไปทำ [[Start Point#^4e71ae| เปิด Docker]]
+
+## 7. สร้าง Router และ Controller
+
+Router คือการจัดการเส้นทางของ URL ที่เราต้องการให้ _[[Server]]_ ตอบสนองต่อ _[[Client]]_ โดยเราจะสร้าง Router แยกตามฟังก์ชันการทำงาน เช่น User, Project, Task, Attachment, Project Member, Task Assignee
+เหตุที่ต้องแยก Router ออกไปเป็นไฟล์ต่างๆ เพราะว่าเมื่อแอปพลิเคชันมีขนาดใหญ่ขึ้น URL จะมีความซับซ้อนมากขึ้นและการจัดการ Router ในไฟล์เดียวอาจทำให้โค้ดยุ่งเหยิงได้
+ดังนั้นเราจึงควรแยก Router ออกไปเป็นไฟล์ต่างๆ เพื่อให้โค้ดอ่านง่ายและดูแลรักษาง่ายขึ้น
+
+🔶 **🏠 เปรียบเทียบแบบบ้าน – Router คือโถงทางเดิน**
+- ลองนึกว่า `app` คือบ้านหลังหนึ่ง
+- ในบ้านมีหลาย "ห้อง" (endpoint) เช่น ห้อง user, ห้อง project, ห้อง task
+- การเขียน Route แบบตรงๆ ใน `index.js` คือการ “เอาประตูแต่ละห้องไปวางไว้กลางบ้าน” ซึ่งพอห้องเยอะขึ้น บ้านก็จะรกรุงรัง
+- แต่ถ้าเราใช้ `Router` ก็เหมือนกับการสร้าง "โถงทางเดิน" ที่แยกแต่ละห้องไว้เป็นสัดส่วน เช่น `userRouter`, `taskRouter`
+- จากนั้นโถงทางเดินแต่ละสายก็เชื่อมกับห้องนั้นๆ ไปอีกที
+
+---
+
+ตัวอย่างที่ไม่มีการใช้ Router
+สมมติว่าเรามี API ที่มีหลาย Endpoint และ Endpoint นั้นยาวมากๆ เช่น
+
+```javascript
+//index.js
+import express from "express";
+import dotenv from "dotenv";
+import { testConnection } from "./test.js";
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Hello World from GET request!");
+});
+
+app.get("/api/v1/user", (req, res) => {
+  res.send("Hello World from API GET request!");
+});
+
+app.post("/api/v1/user", (req, res) => {
+  res.send("Hello World from API POST request!");
+});
+
+app.put("/api/v1/user", (req, res) => {
+  res.send("Hello World from API PUT request!");
+});
+
+app.delete("/api/v1/user", (req, res) => {
+  res.send("Hello World from API DELETE request!");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  testConnection();
+});
+```
+
+ซึ่งเทียบกับการใช้ Router
+```javascript
+//index.js
+import express from "express";
+import dotenv from "dotenv";
+import { testConnection } from "./test.js";
+import userRouter from "./userRouter.js";
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Hello World from GET request!");
+});
+
+app.use("/api/v1/user", userRouter); // โถงทางเดินที่พาไปยัง "ห้อง user"
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  testConnection();
+});
+```
+
+```javascript
+// userRouter.js ตัวอย่างที่ 1
+import express from "express";
+const userRouter = express.Router();
+
+userRouter.get("/", (req, res) => {
+  res.send("Hello World from API GET request!");
+});
+userRouter.post("/", (req, res) => {
+  res.send("Hello World from API POST request!");
+});
+userRouter.put("/", (req, res) => {
+  res.send("Hello World from API PUT request!");
+});
+userRouter.delete("/", (req, res) => {
+  res.send("Hello World from API DELETE request!");
+});
+
+export default userRouter;
+```
+
+หรือจะเป็นแบบนี้ก็ได้
+```javascript
+// userRouter.js ตัวอย่างที่ 2
+import express from "express";
+const userRouter = express.Router();
+
+userRouter.route("/")
+  .get((req, res) => {
+    res.send("Hello World from API GET request!");
+  })
+  .post((req, res) => {
+    res.send("Hello World from API POST request!");
+  })
+  .put((req, res) => {
+    res.send("Hello World from API PUT request!");
+  })
+  .delete((req, res) => {
+    res.send("Hello World from API DELETE request!");
+  });
+
+export default userRouter;
+```
+
+เห็นได้ว่าเรานั้นไม่ต้อง มาเขียน "/api/v1/user" ซ้ำๆ หลายๆ ครั้ง
+และยังสามารถจัดการ Route ได้ง่ายขึ้น
+
+---
+
+ต่อไปคือ **Controller**
+
+Controller คือการจัดการ Logic ของ API ที่เราต้องการให้ _[[Server]]_ ทำงาน เช่น การดึงข้อมูลจาก Database, การประมวลผลข้อมูล, การส่งข้อมูลกลับไปยัง _[[Client]]_
+
+🔶 **🧑‍🍳 เปรียบเทียบกับคนในห้องที่ทำหน้าที่เฉพาะทาง**
+- Router เหมือนโถงทางเดินที่พาเราไปถึง “ห้องต่างๆ”
+- Controller คือ “คนที่อยู่ในห้องนั้นๆ” ที่รับคำสั่งและทำงานจริง เช่น จัดการข้อมูลผู้ใช้
+- ถ้าเรายัด logic ไว้ใน Router โดยตรง ก็เหมือนเรามี “คนทำงานเต็มทางเดิน” ทำให้บ้านรกและดูแลยาก
+- ถ้าแยกเป็น Controller ก็เหมือนให้ "พนักงานแต่ละคนอยู่ในห้องของตัวเอง" และโถงทางเดินก็แค่พาเราไปหาเขา
+
+จากตัวอย่างข้างบน
+```javascript
+// userRouter.js ตัวอย่างที่ 1
+import express from "express";
+const userRouter = express.Router();
+
+userRouter.get("/", (req, res) => {
+  res.send("Hello World from API GET request!");
+});
+userRouter.post("/", (req, res) => {
+  res.send("Hello World from API POST request!");
+});
+userRouter.put("/", (req, res) => {
+  res.send("Hello World from API PUT request!");
+});
+userRouter.delete("/", (req, res) => {
+  res.send("Hello World from API DELETE request!");
+});
+
+export default userRouter;
+```
+
+เราจะเห็นว่า Logic ของ API นั้นอยู่ใน Router ซึ่งทำให้โค้ดดูยุ่งเหยิงและอ่านยาก
+เราสามารถแยก Logic (arrow function) ออกไปเป็น Controller ได้ โดยการสร้างไฟล์แยกออกไป เช่น userController.js
+
+```javascript
+// userController.js
+export const getUser = (req, res) => {
+  res.send("Hello World from API GET request!");
+};
+
+export const createUser = (req, res) => {
+  res.send("Hello World from API POST request!");
+};
+
+export const updateUser = (req, res) => {
+  res.send("Hello World from API PUT request!");
+};
+
+export const deleteUser = (req, res) => {
+  res.send("Hello World from API DELETE request!");
+};
+```
+
+แล้วใน userRouter.js ให้ import ฟังก์ชันจาก userController.js มาใช้
+```javascript
+// userRouter.js
+import express from "express";
+import { getUser, createUser, updateUser, deleteUser } from "./userController.js";
+
+const userRouter = express.Router();
+
+userRouter.get("/", getUser);
+userRouter.post("/", createUser);
+userRouter.put("/", updateUser);
+userRouter.delete("/", deleteUser);
+
+export default userRouter;
+```
+
+🎯 สรุป:
+- `Router` = โถงทางเดินในบ้าน
+- `Endpoint` = ห้องแต่ละห้อง
+- `Method` = วิธีการส่งจดหมายไปยังห้อง (GET, POST, PUT, DELETE)
+- `Controller` = คนในห้องที่รับคำสั่งและตอบกลับ
+
+### **7.1 สร้าง Folder ชื่อ routes**
+สร้าง Folder ชื่อ routes และ Folder ชื่อ controllers ใน backend
+
+![[Pasted image 20250401114259.png]]
+
+### **7.2 เดี๋ยวพาทำเกี่ยวกับ User และ Authentication ก่อน**
+โอเค! ตอนนี้เราจะทำส่วนของ User ก่อนนะ
+
+โดย User ควรจะมีการลงทะเบียน (Register) และเข้าสู่ระบบ (Login)
+- ลงทะเบียน (Register) คือการสร้างบัญชีผู้ใช้ใหม่
+- เข้าสู่ระบบ (Login) คือการตรวจสอบว่าผู้ใช้มีบัญชีอยู่ในระบบหรือไม่
+(- ออกจากระบบ (Logout) คือการทำให้ผู้ใช้ไม่สามารถเข้าถึงข้อมูลส่วนตัวได้อีกต่อไป แต่การออกจากระบบจะเป็นส่วนของ Frontend)
+
+ดังนั้นเราจะสร้าง Router และ Controller สำหรับ User ขึ้นมา
+โดยเราจะสร้าง Router โดยคิดก่อนว่าเราจะต้องการทำอะไรที่เกี่ยวกับ User บ้าง
+ในที่นี้เราจะมีการลงทะเบียน (Register) และเข้าสู่ระบบ (Login)
+
+🔶 **🧑‍🍳 เปรียบเทียบกับคนในห้องที่ทำหน้าที่เฉพาะทาง**
+- Router เหมือนโถงทางเดินที่พาเราไปถึง “ห้องต่างๆ”
+- Controller คือ “คนที่อยู่ในห้องนั้นๆ” ที่รับคำสั่งและทำงานจริง เช่น จัดการข้อมูลผู้ใช้
+
+**โดยบ้านหลักเราอยู่ที่ตำแหน่ง  (starting point of server):**
+```
+http://localhost:3000/
+```
+
+
+**เรามีโถงทางเดินที่พาเรามาห้องที่เกี่ยวกับ User (authRouter):**
+```
+/api/v1/auth/
+```
+
+
+**ในโถงทางเดินนี้ (/api/v1/auth/) มีห้องย่อยๆ ที่ทำหน้าที่ต่างกันคือ (authRouter)**
+
+- ห้องลงทะเบียน (Register): ที่มีวิธีการเข้าห้องคือ POST
+```
+/register
+```
+
+- ห้องเข้าสู่ระบบ (Login): ที่มีวิธีการเข้าห้องคือ POST
+```
+/login
+```
+
+
+ดังนั้นเส้นทางที่อยู่ในปลายทางของ Http Request หรือซองจดหมายที่เราจะส่งไปยังห้องต่างๆ จะมีลักษณะดังนี้
+```
+POST http://localhost:3000/api/v1/auth/register
+POST http://localhost:3000/api/v1/auth/login
+```
+
+POST http://localhost:3000/api/v1/auth/register
+POST http://localhost:3000/api/v1/auth/login
+
+เกร็ดความรู้ ทำไมต้องเป็น /api/v1/auth/
+
+📌 ทำไมต้องมี API Versioning เช่น /api/v1/ ?
+
+เมื่อเราเริ่มต้นพัฒนา API สำหรับแอปหรือเว็บไซต์ เราอาจคิดว่าเส้นทางแบบง่าย ๆ เช่น /register หรือ /login ก็เพียงพอแล้ว
+แต่นั่นเป็นเพียงจุดเริ่มต้นเท่านั้น เพราะเมื่อระบบเติบโต ฟีเจอร์มากขึ้น และมีผู้ใช้งานหลากหลายประเภท
+เราจะต้องมีการ **เปลี่ยนแปลง** API อยู่เรื่อย ๆ เช่น เปลี่ยนรูปแบบข้อมูล เพิ่มฟิลด์บังคับ หรือปรับปรุงกระบวนการยืนยันตัวตน
+หากเราเปลี่ยนแปลงโดยไม่แยกเวอร์ชัน จะเกิดปัญหากับผู้ใช้งานเดิมทันที
+
+✅ API Versioning คือแนวทางแก้ไขปัญหานี้ โดยการกำหนดเวอร์ชันไว้ใน URL เช่น /api/v1/
+เพื่อแยกความสามารถและข้อกำหนดของ API แต่ละรุ่นออกจากกัน ทำให้ระบบมีความยืดหยุ่นและเสถียร
+
+✅ ผู้ใช้เก่าสามารถใช้ API เวอร์ชันเดิมต่อไปได้โดยไม่พัง
+✅ ผู้ใช้ใหม่สามารถใช้ฟีเจอร์ล่าสุดใน API เวอร์ชันใหม่ได้ทันที
+
+ตัวอย่าง:
+- /api/v1/auth/register => API รุ่นแรก
+- /api/v2/auth/register => API รุ่นใหม่ที่อาจรองรับ OAuth, ส่งรหัส OTP หรือโครงสร้างข้อมูลใหม่
+
+❌ ถ้าไม่มี API Versioning:
+- ผู้ใช้เก่าจะได้รับ Error เมื่อ API เปลี่ยนไป
+- แอปเก่าจะไม่สามารถสื่อสารกับ Backend ได้
+- นักพัฒนาอาจต้องเขียนโค้ดซับซ้อนเพื่อรองรับหลายเวอร์ชันใน endpoint เดียว
+
+🎯 สรุป: การมี /api/v1/ คือการ "จัดระเบียบ" และ "วางแผนอนาคต" ของระบบให้เติบโตได้อย่างมั่นคง
+
+
+#### 7.2.1 สร้างไฟล์ authRouter.js ใน Folder routes
+
+![[Pasted image 20250402184715.png]]
+
+authRouter.js
+```javascript
+// authRouter.js
+import express from "express";
+import { registerUser, loginUser } from "../controllers/authController.js";
+
+const router = express.Router();
+
+router.post("/register", registerUser);
+router.post("/login", loginUser);
+
+export default router;
+```
+
+#### 7.2.2 สร้างไฟล์ authController.js ใน Folder controllers
+ในตอนนี้ยังไม่ต้องเขียน Logic อะไรใน Controller เดี๋ยวเราจะลองดูก่อนว่าสร้าง Router และ Controller ถูกต้องหรือไม่ โดยให้ส่ง Response กลับไปว่า "User registered successfully" และ "User logged in successfully" ก่อน
+![[Pasted image 20250402190106.png]]
+```javascript
+// authController.js
+export const registerUser = async (req, res) => {
+  res.status(200).send({ message: "User registered successfully" });
+};
+export const loginUser = async (req, res) => {
+  res.status(200).send({ message: "User logged in successfully" });
+};
+```
+
+#### 7.2.3 เพิ่ม authRouter ใน index.js
+ใน index.js ให้ import authRouter เข้ามาและใช้ Router ที่เราสร้างขึ้น
+```javascript
+// index.js
+import express from "express";
+import dotenv from "dotenv";
+import { testConnection } from "./test.js";
+import authRouter from "./routes/authRouter.js";
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use("/api/v1/auth/", authRouter); // เพิ่ม Router ที่เราสร้างขึ้น
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  testConnection();
+});
+```
+
+
+เค้าจะใช้ Postman ในการทดสอบ API ของเรา
+Postman เป็นเครื่องมือที่ใช้ในการทดสอบ API โดยเราสามารถส่ง Request ไปยัง API ของเราได้
+Postman จะช่วยให้เราสามารถทดสอบ API ได้ง่ายขึ้น โดยไม่ต้องเขียน Code ขึ้นมาเอง
+เดี๋ยวเราจะลองใช้ Post man เพื่อทดสอบดูว่าเราสร้าง Router และ Controller ถูกต้องหรือไม่
+
+
+#### 7.2.4 ทดสอบ API ด้วย Postman
+- 1. มั่นใจว่า Run Docker อยู่
+- 2. เปิด run backend ด้วย คำสั่ง
+```bash
+npm run dev
+```
